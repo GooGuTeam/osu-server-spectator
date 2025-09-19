@@ -588,8 +588,8 @@ namespace osu.Server.Spectator.Database
 
             // 构建连接字符串，如果有密码则包含密码
             string connectionString = string.IsNullOrEmpty(AppSettings.DatabasePassword)
-                ? $"Server={AppSettings.DatabaseHost};Port={AppSettings.DatabasePort};Database={AppSettings.DatabaseName};User ID={AppSettings.DatabaseUser};ConnectionTimeout=5;ConnectionReset=false;Pooling=true;Pipelining=false"
-                : $"Server={AppSettings.DatabaseHost};Port={AppSettings.DatabasePort};Database={AppSettings.DatabaseName};User ID={AppSettings.DatabaseUser};Password={AppSettings.DatabasePassword};ConnectionTimeout=5;ConnectionReset=false;Pooling=true;Pipelining=false";
+                ? $"Server={AppSettings.DatabaseHost};Port={AppSettings.DatabasePort};Database={AppSettings.DatabaseName};User ID={AppSettings.DatabaseUser};ConnectionTimeout=15;ConnectionReset=false;Pooling=true;Pipelining=false"
+                : $"Server={AppSettings.DatabaseHost};Port={AppSettings.DatabasePort};Database={AppSettings.DatabaseName};User ID={AppSettings.DatabaseUser};Password={AppSettings.DatabasePassword};ConnectionTimeout=15;ConnectionReset=false;Pooling=true;Pipelining=false";
 
             //打印连接字符串
             //logger.LogInformation("Connecting to database: {ConnectionString}", connectionString);
