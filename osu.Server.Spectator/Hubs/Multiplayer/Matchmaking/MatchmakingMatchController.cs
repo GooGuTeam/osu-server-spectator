@@ -29,12 +29,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
         /// <summary>
         /// Duration users are given to view standings at the round start screen.
         /// </summary>
-        private const int stage_round_start_time = 10;
+        private const int stage_round_start_time = 5;
 
         /// <summary>
         /// Duration users are given to pick their beatmap.
         /// </summary>
-        private const int stage_user_picks_time = 20;
+        private const int stage_user_picks_time = 10;
 
         /// <summary>
         /// Duration before the beatmap is revealed to users (should approximate client animation time).
@@ -44,7 +44,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
         /// <summary>
         /// Duration users are given to download the beatmap before they're excluded from the match.
         /// </summary>
-        private const int stage_prepare_beatmap_time = 120;
+        private const int stage_prepare_beatmap_time = 15;
 
         /// <summary>
         /// Duration users are given to prepare for the match to start.
@@ -138,7 +138,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
         {
             // Debug log: User joined
             System.Diagnostics.Debug.WriteLine($"[MatchmakingMatchController] HandleUserJoined: User {user.UserID} joined. Current stage: {state.Stage}, joinedUserCount: {joinedUserCount}, room_size: {room_size}");
-            
+
             switch (state.Stage)
             {
                 case MatchmakingStage.WaitingForClientsJoin:
@@ -153,7 +153,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
                         System.Diagnostics.Debug.WriteLine($"[MatchmakingMatchController] Room not full yet ({joinedUserCount}/{room_size}). Waiting for more players.");
                     }
                     break;
-                    
+
                 default:
                     System.Diagnostics.Debug.WriteLine($"[MatchmakingMatchController] User joined but not in WaitingForClientsJoin stage. Current stage: {state.Stage}");
                     break;
@@ -287,7 +287,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
             using (var db = dbFactory.GetInstance())
             {
-                foreach (var score in await db.GetAllScoresForPlaylistItem(CurrentItem.ID))
+                foreach (var score in await db.GetAllScoresForPlaylistItem(room.RoomID, CurrentItem.ID))
                     scores[(int)score.user_id] = score;
             }
 

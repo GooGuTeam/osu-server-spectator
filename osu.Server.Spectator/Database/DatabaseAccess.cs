@@ -325,7 +325,7 @@ namespace osu.Server.Spectator.Database
                 "JOIN `osu_beatmaps` `b` " +
                 "ON `b`.`beatmap_id` = `i`.`beatmap_id` " +
                 "WHERE `i`.`id` = @Id " +
-                "AND `i`.`room_id` = @RoomId", 
+                "AND `i`.`room_id` = @RoomId",
                 new { Id = playlistItemId, RoomId = roomId });
             */
         }
@@ -437,7 +437,7 @@ namespace osu.Server.Spectator.Database
                 new { RoomId = roomId }
             )).ToArray();
             */
-}
+        }
 
 
         public async Task MarkScoreHasReplay(Score score)
@@ -570,24 +570,16 @@ namespace osu.Server.Spectator.Database
         /// This should be used sparingly as it queries full rows.
         /// </remarks>
         /// <param name="playlistItemId">The playlist item.</param>
-        public async Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long playlistItemId)
+        public async Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId)
         {
-            // TODO: 临时修复 - multiplayer_score_links 表不存在，返回空结果
-            // 原始查询需要 multiplayer_score_links 表，但该表在数据库中不存在
-            // 暂时返回空集合以避免异常
-            return await Task.FromResult(Enumerable.Empty<SoloScore>());
-            
-            /*
             var connection = await getConnectionAsync();
-
             return (await connection.QueryAsync<SoloScore>(
-                "SELECT * FROM `scores` "
-                + "JOIN `multiplayer_score_links` ON `multiplayer_score_links`.`score_id` = `scores`.`id` "
-                + "WHERE `multiplayer_score_links`.`playlist_item_id` = @playlistItemId", new
-                {
-                    playlistItemId = playlistItemId
-                }));
-            */
+                "SELECT `scores`.`id`, `scores`.`total_score`, `scores`.`user_id` FROM `scores` "
+                + "JOIN `playlist_best_scores` ON `playlist_best_scores`.`score_id` = `scores`.`id` "
+                + "AND `playlist_best_scores`.`playlist_id` = @playlistItemId "
+                + "AND `playlist_best_scores`.`room_id` = @roomId "
+                , new { playlistItemId = playlistItemId, roomId = roomId }));
+
         }
 
         /// <summary>
@@ -663,22 +655,22 @@ namespace osu.Server.Spectator.Database
         public async Task<float> GetUserPPAsync(int userId, int rulesetId)
         {
             var connection = await getConnectionAsync();
-            
+
             // 使用 lazer_user_statistics 表存储按模式分类的用户统计数据
             string gameMode = rulesetId switch
             {
                 0 => "osu",
-                1 => "taiko", 
+                1 => "taiko",
                 2 => "fruits",
                 3 => "mania",
                 _ => throw new ArgumentOutOfRangeException(nameof(rulesetId), rulesetId, null)
             };
-            
+
             // 从 lazer_user_statistics 表获取用户在指定模式下的PP值
             var ppValue = await connection.QuerySingleOrDefaultAsync<float?>(
-                "SELECT pp FROM lazer_user_statistics WHERE user_id = @userId AND mode = @gameMode", 
+                "SELECT pp FROM lazer_user_statistics WHERE user_id = @userId AND mode = @gameMode",
                 new { userId = userId, gameMode = gameMode });
-            
+
             // 如果该模式下没有PP数据，返回0（表示用户在该模式下没有成绩）
             return ppValue ?? 0;
         }
@@ -708,9 +700,9 @@ namespace osu.Server.Spectator.Database
             return (await connection.QueryAsync<matchmaking_pool_beatmap>("SELECT p.*, b.checksum, b.difficulty_rating as difficultyrating FROM `matchmaking_pool_beatmaps` p "
                                                                           + "JOIN `beatmaps` b ON p.beatmap_id = b.id "
                                                                           + "WHERE p.pool_id = @PoolId AND b.deleted_at IS NULL", new
-            {
-                PoolId = poolId
-            })).ToArray();
+                                                                          {
+                                                                              PoolId = poolId
+                                                                          })).ToArray();
         }
 
         public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId)
@@ -736,13 +728,13 @@ namespace osu.Server.Spectator.Database
                                           + "`total_points` = @TotalPoints, "
                                           + "`elo_data` = @EloData, "
                                           + "`updated_at` = NOW()", new
-            {
-                UserId = stats.user_id,
-                RulesetId = stats.ruleset_id,
-                FirstPlacements = stats.first_placements,
-                TotalPoints = stats.total_points,
-                EloData = stats.elo_data
-            });
+                                          {
+                                              UserId = stats.user_id,
+                                              RulesetId = stats.ruleset_id,
+                                              FirstPlacements = stats.first_placements,
+                                              TotalPoints = stats.total_points,
+                                              EloData = stats.elo_data
+                                          });
         }
 
         public void Dispose()

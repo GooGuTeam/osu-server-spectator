@@ -214,7 +214,7 @@ namespace osu.Server.Spectator.Database
         /// Retrieve all scores for a specified playlist item.
         /// </summary>
         /// <param name="playlistItemId">The playlist item.</param>
-        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long playlistItemId);
+        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId);
 
         /// <summary>
         /// Retrieve all passing scores for a specified playlist item.
