@@ -168,6 +168,17 @@ namespace osu.Server.Spectator.Database
                 new { UserId = userId, GameMode = gamemode, PlayTime = playTime });
         }
 
+        public async Task<database_beatmap[]> GetBeatmapsAsync(int[] beatmapIds)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<database_beatmap>(
+                "SELECT beatmap_id, beatmapset_id, checksum, approved, difficultyrating, playmode, osu_file_version FROM osu_beatmaps WHERE beatmap_id IN @BeatmapIds AND deleted_at IS NULL", new
+                {
+                    BeatmapIds = beatmapIds
+                })).ToArray();
+        }
+
         public async Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId)
         {
             var connection = await getConnectionAsync();
@@ -305,7 +316,20 @@ namespace osu.Server.Spectator.Database
             return await connection.QuerySingleAsync<multiplayer_playlist_item>(
                 "SELECT * FROM room_playlists WHERE id = @Id AND room_id = @RoomId",
                 new { Id = playlistItemId, RoomId = roomId });
+
+            // TODO: 后面补充修改
+            /*
+            return await connection.QuerySingleAsync<multiplayer_playlist_item>(
+                "SELECT `i`.*, `b`.`checksum`, `b`.`difficultyrating` " +
+                "FROM `multiplayer_playlist_items` `i` " +
+                "JOIN `osu_beatmaps` `b` " +
+                "ON `b`.`beatmap_id` = `i`.`beatmap_id` " +
+                "WHERE `i`.`id` = @Id " +
+                "AND `i`.`room_id` = @RoomId",
+                new { Id = playlistItemId, RoomId = roomId });
+            */
         }
+
 
         public async Task<long> AddPlaylistItemAsync(multiplayer_playlist_item item)
         {
@@ -397,8 +421,24 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
 
-            return (await connection.QueryAsync<multiplayer_playlist_item>("SELECT * FROM room_playlists WHERE room_id = @RoomId", new { RoomId = roomId })).ToArray();
+            return (await connection.QueryAsync<multiplayer_playlist_item>(
+                "SELECT * FROM room_playlists WHERE room_id = @RoomId",
+                new { RoomId = roomId }
+            )).ToArray();
+
+            // TODO: 后面补充修改
+            /*
+            return (await connection.QueryAsync<multiplayer_playlist_item>(
+                "SELECT `i`.*, `b`.`checksum`, `b`.`difficultyrating` " +
+                "FROM `multiplayer_playlist_items` `i` " +
+                "JOIN `osu_beatmaps` `b` " +
+                "ON `b`.`beatmap_id` = `i`.`beatmap_id` " +
+                "WHERE `i`.`room_id` = @RoomId",
+                new { RoomId = roomId }
+            )).ToArray();
+            */
         }
+
 
         public async Task MarkScoreHasReplay(Score score)
         {
@@ -523,6 +563,31 @@ namespace osu.Server.Spectator.Database
                 new { scoreId = scoreId });
         }
 
+        /// <summary>
+        /// Retrieves ALL score data for scores on a playlist item.
+        /// </summary>
+        /// <remarks>
+        /// This should be used sparingly as it queries full rows.
+        /// </remarks>
+        /// <param name="playlistItemId">The playlist item.</param>
+        public async Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId)
+        {
+            var connection = await getConnectionAsync();
+            return (await connection.QueryAsync<SoloScore>(
+                "SELECT `scores`.`id`, `scores`.`total_score`, `scores`.`user_id` FROM `scores` "
+                + "JOIN `playlist_best_scores` ON `playlist_best_scores`.`score_id` = `scores`.`id` "
+                + "AND `playlist_best_scores`.`playlist_id` = @playlistItemId "
+                + "AND `playlist_best_scores`.`room_id` = @roomId "
+                , new { playlistItemId = playlistItemId, roomId = roomId }));
+
+        }
+
+        /// <summary>
+        /// Retrieves the <see cref="SoloScore.id">ID</see> and <see cref="SoloScore.total_score">total score</see> for passing scores on a playlist item.
+        /// </summary>
+        /// <param name="roomId">The room ID.</param>
+        /// <param name="playlistItemId">The playlist item.</param>
+        /// <param name="afterScoreId">The score ID after which to retrieve.</param>
         public async Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long roomId, long playlistItemId, ulong afterScoreId = 0)
         {
             var connection = await getConnectionAsync();
@@ -572,6 +637,104 @@ namespace osu.Server.Spectator.Database
                 "INSERT INTO `multiplayer_events` (`room_id`, `event_type`, `playlist_item_id`, `user_id`, `event_detail`, `created_at`, `updated_at`) "
                 + "VALUES (@room_id, @event_type, @playlist_item_id, @user_id, @event_detail, NOW(), NOW())",
                 ev);
+        }
+
+        public async Task ToggleUserPresenceAsync(int userId, bool visible)
+        {
+            var connection = await getConnectionAsync();
+
+            await connection.ExecuteAsync(
+                "UPDATE `lazer_users` SET `is_active` = @visible WHERE `id` = @userId",
+                new
+                {
+                    visible = visible,
+                    userId = userId
+                });
+        }
+
+        public async Task<float> GetUserPPAsync(int userId, int rulesetId)
+        {
+            var connection = await getConnectionAsync();
+
+            // 使用 lazer_user_statistics 表存储按模式分类的用户统计数据
+            string gameMode = rulesetId switch
+            {
+                0 => "osu",
+                1 => "taiko",
+                2 => "fruits",
+                3 => "mania",
+                _ => throw new ArgumentOutOfRangeException(nameof(rulesetId), rulesetId, null)
+            };
+
+            // 从 lazer_user_statistics 表获取用户在指定模式下的PP值
+            var ppValue = await connection.QuerySingleOrDefaultAsync<float?>(
+                "SELECT pp FROM lazer_user_statistics WHERE user_id = @userId AND mode = @gameMode",
+                new { userId = userId, gameMode = gameMode });
+
+            // 如果该模式下没有PP数据，返回0（表示用户在该模式下没有成绩）
+            return ppValue ?? 0;
+        }
+
+        public async Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync()
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `active` = 1")).ToArray();
+        }
+
+        public async Task<matchmaking_pool?> GetMatchmakingPoolAsync(int poolId)
+        {
+            var connection = await getConnectionAsync();
+
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `id` = @PoolId", new
+            {
+                PoolId = poolId
+            });
+        }
+
+        public async Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(int poolId)
+        {
+            var connection = await getConnectionAsync();
+
+            // g0v0-server 使用 beatmaps 表而不是 osu_beatmaps 表
+            return (await connection.QueryAsync<matchmaking_pool_beatmap>("SELECT p.*, b.checksum, b.difficulty_rating as difficultyrating FROM `matchmaking_pool_beatmaps` p "
+                                                                          + "JOIN `beatmaps` b ON p.beatmap_id = b.id "
+                                                                          + "WHERE p.pool_id = @PoolId AND b.deleted_at IS NULL", new
+                                                                          {
+                                                                              PoolId = poolId
+                                                                          })).ToArray();
+        }
+
+        public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId)
+        {
+            var connection = await getConnectionAsync();
+
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `ruleset_id` = @RulesetId", new
+            {
+                UserId = userId,
+                RulesetId = rulesetId
+            });
+        }
+
+        public async Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats)
+        {
+            var connection = await getConnectionAsync();
+
+            // 现在 g0v0-server 的 matchmaking_user_stats 表已经有 created_at 和 updated_at 字段
+            await connection.ExecuteAsync("INSERT INTO `matchmaking_user_stats` (`user_id`, `ruleset_id`, `first_placements`, `total_points`, `elo_data`, `created_at`, `updated_at`) "
+                                          + "VALUES (@UserId, @RulesetId, @FirstPlacements, @TotalPoints, @EloData, NOW(), NOW()) "
+                                          + "ON DUPLICATE KEY UPDATE "
+                                          + "`first_placements` = @FirstPlacements, "
+                                          + "`total_points` = @TotalPoints, "
+                                          + "`elo_data` = @EloData, "
+                                          + "`updated_at` = NOW()", new
+                                          {
+                                              UserId = stats.user_id,
+                                              RulesetId = stats.ruleset_id,
+                                              FirstPlacements = stats.first_placements,
+                                              TotalPoints = stats.total_points,
+                                              EloData = stats.elo_data
+                                          });
         }
 
         public void Dispose()
