@@ -10,6 +10,10 @@ using osu.Server.QueueProcessor;
 using osu.Server.Spectator.Database;
 using ServerBeatmapUpdates = osu.Server.QueueProcessor.BeatmapUpdates;
 using ClientBeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
+using System.Threading.Tasks;
+using System.Threading;
+using osu.Server.Spectator.Database.Models;
+using System.Collections.Generic;
 
 namespace osu.Server.Spectator.Hubs.Metadata
 {
@@ -23,7 +27,11 @@ namespace osu.Server.Spectator.Hubs.Metadata
 
         private readonly ILogger logger;
 
-        private readonly IDisposable poller;
+        private readonly CancellationTokenSource cts;
+
+        private readonly int pollMilliseconds = 10000;
+
+        private DateTimeOffset after;
 
         public MetadataBroadcaster(
             ILoggerFactory loggerFactory,
@@ -32,37 +40,54 @@ namespace osu.Server.Spectator.Hubs.Metadata
         {
             this.databaseFactory = databaseFactory;
             this.metadataHubContext = metadataHubContext;
+            after = DateTimeOffset.UtcNow;
+            cts = new CancellationTokenSource();
 
             logger = loggerFactory.CreateLogger(nameof(MetadataBroadcaster));
-            
-            // g0v0-server doesn't have the same queue structure, so disable BeatmapStatusWatcher
-            // Check if this is g0v0-server environment by checking database name
-            if (AppSettings.DatabaseName == "osu_api")
+        }
+
+        private async Task poll()
+        {
+            while (!cts.Token.IsCancellationRequested)
             {
-                logger.LogInformation("g0v0-server environment detected. BeatmapStatusWatcher disabled.");
-                poller = new DummyDisposable();
-            }
-            else
-            {
-                poller = BeatmapStatusWatcher.StartPollingAsync(handleUpdates, 5000).Result;
+                try
+                {
+                    using var db = databaseFactory.GetInstance();
+
+                    var beatmapSets = await db.GetChangedBeatmapSetsAsync(after);
+                }
+                catch (Exception value)
+                {
+                    logger.LogWarning(value, "Poll failed");
+                    await Task.Delay(1000, cts.Token);
+                }
+                await Task.Delay(pollMilliseconds, cts.Token);
             }
         }
 
         // ReSharper disable once AsyncVoidMethod
-        private async void handleUpdates(ServerBeatmapUpdates updates)
+        private async void handleUpdates(IEnumerable<beatmap_sync> updates)
         {
-            logger.LogInformation("Polled beatmap changes up to last queue id {lastProcessedQueueID}", updates.LastProcessedQueueID);
+            logger.LogInformation("Polled beatmap changes up to {datetime}", after);
 
-            if (updates.BeatmapSetIDs.Any())
+            if (updates.Any())
             {
-                logger.LogInformation("Broadcasting new beatmaps to client: {beatmapIds}", string.Join(',', updates.BeatmapSetIDs.Select(i => i.ToString())));
-                await metadataHubContext.Clients.All.SendAsync(nameof(IMetadataClient.BeatmapSetsUpdated), new ClientBeatmapUpdates(updates.BeatmapSetIDs, updates.LastProcessedQueueID));
+                List<int> beatmapIds = new List<int>();
+                foreach (var update in updates)
+                {
+                    beatmapIds.Add(update.beatmapset_id);
+                    if (update.updated_at > after)
+                        after = update.updated_at;
+                }
+
+                logger.LogInformation("Broadcasting new beatmaps to client: {beatmapIds}", string.Join(',', beatmapIds.Select(i => i.ToString())));
+                await metadataHubContext.Clients.All.SendAsync(nameof(IMetadataClient.BeatmapSetsUpdated), new ClientBeatmapUpdates(beatmapIds.ToArray(), TimeHelper.ToMappedInt(after)));
             }
         }
 
         public void Dispose()
         {
-            poller.Dispose();
+            cts.Cancel();
         }
     }
 

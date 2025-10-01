@@ -574,6 +574,14 @@ namespace osu.Server.Spectator.Database
                 ev);
         }
 
+        public async Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after)
+        {
+            var connection = await getConnectionAsync();
+            return await connection.QueryAsync<beatmap_sync>(
+                "SELECT `beatmapset_id`, `updated_at` FROM beatmap_sync WHERE updated_at > @After",
+                new { After = after });
+        }
+
         public void Dispose()
         {
             openConnection?.Dispose();

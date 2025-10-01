@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging;
 using osu.Game.Online;
 using osu.Game.Online.Metadata;
 using osu.Game.Users;
-using osu.Server.QueueProcessor;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
@@ -116,8 +115,23 @@ namespace osu.Server.Spectator.Hubs.Metadata
 
         public async Task<BeatmapUpdates> GetChangesSince(int queueId)
         {
-            QueueProcessor.BeatmapUpdates updates = await BeatmapStatusWatcher.GetUpdatedBeatmapSetsAsync(queueId);
-            return new BeatmapUpdates(updates.BeatmapSetIDs, updates.LastProcessedQueueID);
+            var after = TimeHelper.ToDateTimeOffset(queueId);
+            using (var db = databaseFactory.GetInstance())
+            {
+                var beatmapSets = await db.GetChangedBeatmapSetsAsync(after);
+
+                List<int> beatmapSetIDs = new List<int>();
+                DateTimeOffset? last_update = null;
+                foreach (var b in beatmapSets)
+                {
+                    beatmapSetIDs.Add(b.beatmapset_id);
+                    if (last_update == null || b.updated_at > last_update)
+                        last_update = b.updated_at;
+                }
+                if (last_update == null)
+                    last_update = DateTimeOffset.UtcNow;
+                return new BeatmapUpdates(beatmapSetIDs.ToArray(), TimeHelper.ToMappedInt(last_update.Value));
+            }
         }
 
         public async Task BeginWatchingUserPresence()

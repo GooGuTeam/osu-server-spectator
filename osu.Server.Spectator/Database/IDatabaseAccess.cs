@@ -243,5 +243,7 @@ namespace osu.Server.Spectator.Database
 
         Task<int?> GetUserPlaytimeAsync(string gamemode, int userId);
         Task UpdateUserPlaytimeAsync(string gamemode, int userId, int playTime);
+
+        Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after);
     }
 }
