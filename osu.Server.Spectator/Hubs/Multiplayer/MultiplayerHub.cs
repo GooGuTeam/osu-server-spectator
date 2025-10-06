@@ -60,6 +60,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         public async Task<MultiplayerRoom> CreateRoom(MultiplayerRoom room)
         {
             Log($"{Context.GetUserId()} creating room");
+            using (var db = databaseFactory.GetInstance())
+            {
+                if (await db.IsUserRestrictedAsync(Context.GetUserId()))
+                    throw new InvalidStateException("Can't create a room when restricted.");
+            }
 
             long roomId = await sharedInterop.CreateRoomAsync(Context.GetUserId(), room);
             await multiplayerEventLogger.LogRoomCreatedAsync(roomId, Context.GetUserId());

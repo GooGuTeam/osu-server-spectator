@@ -62,10 +62,22 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
 
-            var priv = await connection.QueryFirstOrDefaultAsync<int>("SELECT priv FROM lazer_users WHERE id = @UserID", new { UserID = userId });
+            var result = await connection.QueryFirstOrDefaultAsync<int>(@"SELECT EXISTS(
+                SELECT 1
+                FROM user_account_history
+                WHERE user_id = @UserID
+                AND type = 'restriction'
+                AND (
+                    permanent = TRUE
+                    OR (
+                        TIMESTAMPADD(SECOND, length, timestamp) > NOW()
+                        AND NOW() > timestamp
+                    )
+                )
+            ) AS is_restricted;", new { UserID = userId });
 
             // priv 值为 1 表示正常用户，其他值可能表示受限用户
-            return priv != 1;
+            return result == 1;
         }
 
         public async Task<multiplayer_room?> GetRoomAsync(long roomId)
