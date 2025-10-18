@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -12,11 +13,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Logging;
-using osu.Game.Online.Multiplayer;
-using osu.Game.Online.Rooms;
-using System.IO;
 
 namespace osu.Server.Spectator.Services
 {
@@ -211,8 +207,7 @@ namespace osu.Server.Spectator.Services
                 }
 
                 // Outer exception message is serialised to clients, inner exception is logged to the server and NOT serialised to the client.
-                return new SharedInteropRequestFailedException(response.StatusCode, errorMessage,
-                    new Exception($"Shared interop request to {url} failed with {response.StatusCode} ({response.ReasonPhrase})."));
+                return new SharedInteropRequestFailedException(response.StatusCode, errorMessage, new Exception(await response.Content.ReadAsStringAsync()));
             }
 
             [Serializable]

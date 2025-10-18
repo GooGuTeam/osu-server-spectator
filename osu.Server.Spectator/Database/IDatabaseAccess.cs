@@ -1,13 +1,10 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Server.Spectator.Database.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.IdentityModel.JsonWebTokens;
-using osu.Game.Online.Multiplayer;
-using osu.Game.Scoring;
-using osu.Server.Spectator.Database.Models;
 
 namespace osu.Server.Spectator.Database
 {
@@ -44,6 +41,11 @@ namespace osu.Server.Spectator.Database
         /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>.
         /// </summary>
         Task<database_beatmap?> GetBeatmapAsync(int beatmapId);
+
+        /// <summary>
+        /// Retrieves beatmaps corresponding to the given <paramref name="beatmapIds"/>.
+        /// </summary>
+        Task<database_beatmap[]> GetBeatmapsAsync(int[] beatmapIds);
 
         /// <summary>
         /// Retrieves all beatmaps corresponding to the given <paramref name="beatmapSetId"/>.
@@ -206,6 +208,13 @@ namespace osu.Server.Spectator.Database
         Task<(long roomID, long playlistItemID)?> GetMultiplayerRoomIdForScoreAsync(long scoreId);
 
         /// <summary>
+        /// Retrieve all scores for a specified playlist item.
+        /// </summary>
+        /// <param name="roomId">The room</param>
+        /// <param name="playlistItemId">The playlist item.</param>
+        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId);
+
+        /// <summary>
         /// Retrieve all passing scores for a specified playlist item.
         /// </summary>
         /// <param name="roomId"></param>
@@ -245,5 +254,26 @@ namespace osu.Server.Spectator.Database
         Task UpdateUserPlaytimeAsync(string gamemode, int userId, int playTime);
 
         Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after);
+
+        /// <summary>
+        /// Toggles the user's "hide user presence" website setting.
+        /// </summary>
+        /// <param name="userId">The user's ID.</param>
+        /// <param name="visible">Whether the user should appear online to other players on the website.</param>
+        Task ToggleUserPresenceAsync(int userId, bool visible);
+
+        Task<float> GetUserPPAsync(int userId, int rulesetId);
+
+        Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync();
+
+        Task<matchmaking_pool?> GetMatchmakingPoolAsync(int poolId);
+
+        Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(int poolId);
+
+        Task IncrementMatchmakingSelectionCount(matchmaking_pool_beatmap[] beatmaps);
+
+        Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId);
+
+        Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
     }
 }

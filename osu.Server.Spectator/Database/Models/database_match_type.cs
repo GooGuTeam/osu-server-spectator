@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using osu.Game.Online.Rooms;
 
 // ReSharper disable InconsistentNaming (matches database table)
 
@@ -15,6 +14,7 @@ namespace osu.Server.Spectator.Database.Models
         playlists,
         head_to_head,
         team_versus,
+        matchmaking
     }
 
     public static class DatabaseMatchTypeExtensions
@@ -31,6 +31,9 @@ namespace osu.Server.Spectator.Database.Models
 
                 case database_match_type.team_versus:
                     return MatchType.TeamVersus;
+
+                case database_match_type.matchmaking:
+                    return MatchType.Matchmaking;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
@@ -49,6 +52,9 @@ namespace osu.Server.Spectator.Database.Models
 
                 case MatchType.TeamVersus:
                     return database_match_type.team_versus;
+
+                case MatchType.Matchmaking:
+                    return database_match_type.matchmaking;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));

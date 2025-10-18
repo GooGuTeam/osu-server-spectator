@@ -1,12 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Server.Spectator.Entities;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using osu.Game.Online.API;
-using osu.Game.Online.Multiplayer;
-using osu.Game.Online.Rooms;
-using osu.Server.Spectator.Entities;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
@@ -78,7 +75,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// Retrieves a <see cref="ServerMultiplayerRoom"/> usage.
         /// </summary>
         /// <param name="roomId">The ID of the room to retrieve.</param>
-        Task<ItemUsage<ServerMultiplayerRoom>> GetRoom(long roomId);
+        Task<ItemUsage<ServerMultiplayerRoom>?> TryGetRoom(long roomId);
 
         /// <summary>
         /// Unreadies all users in a room.
@@ -138,5 +135,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <param name="room">The room to start the match for.</param>
         /// <exception cref="InvalidStateException">If the current playlist item is expired or the room is not in an <see cref="MultiplayerRoomState.Open"/> state.</exception>
         Task StartMatch(ServerMultiplayerRoom room);
+
+        /// <summary>
+        /// Should be called when user states change, to check whether the new overall room state can trigger a room-level state change.
+        /// </summary>
+        Task UpdateRoomStateIfRequired(ServerMultiplayerRoom room);
+
+        Task NotifyMatchmakingItemSelected(ServerMultiplayerRoom room, int userId, long playlistItemId);
+
+        Task NotifyMatchmakingItemDeselected(ServerMultiplayerRoom room, int userId, long playlistItemId);
     }
 }

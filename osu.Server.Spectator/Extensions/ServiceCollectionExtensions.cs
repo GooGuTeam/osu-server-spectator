@@ -1,16 +1,15 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using Microsoft.Extensions.DependencyInjection;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Hubs;
 using osu.Server.Spectator.Hubs.Metadata;
 using osu.Server.Spectator.Hubs.Multiplayer;
+using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Spectator;
 using osu.Server.Spectator.Services;
 using osu.Server.Spectator.Storage;
-using StackExchange.Redis;
 
 namespace osu.Server.Spectator.Extensions
 {
@@ -34,7 +33,9 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<ChatFilters>()
                                     .AddSingleton<IDailyChallengeUpdater, DailyChallengeUpdater>()
                                     .AddHostedService<IDailyChallengeUpdater>(ctx => ctx.GetRequiredService<IDailyChallengeUpdater>())
-                                    .AddSingleton<MultiplayerEventLogger>();
+                                    .AddSingleton<MultiplayerEventLogger>()
+                                    .AddSingleton<IMatchmakingQueueBackgroundService, MatchmakingQueueBackgroundService>()
+                                    .AddHostedService<IMatchmakingQueueBackgroundService>(ctx => ctx.GetRequiredService<IMatchmakingQueueBackgroundService>());
         }
 
         /// <summary>

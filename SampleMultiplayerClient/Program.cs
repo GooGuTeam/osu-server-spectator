@@ -1,11 +1,6 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +9,11 @@ using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SampleMultiplayerClient
 {
@@ -130,6 +130,34 @@ namespace SampleMultiplayerClient
 
                         case "startmatch":
                             await targetClient.StartMatch();
+                            break;
+
+                        case "mmjoinlobby":
+                            await targetClient.MatchmakingJoinLobby();
+                            break;
+
+                        case "mmleavelobby":
+                            await targetClient.MatchmakingLeaveLobby();
+                            break;
+
+                        case "mmjoinqueue":
+                            await targetClient.MatchmakingJoinQueue(int.Parse(args[0]));
+                            break;
+
+                        case "mmleavequeue":
+                            await targetClient.MatchmakingLeaveQueue();
+                            break;
+
+                        case "mmaccept":
+                            await targetClient.MatchmakingAcceptInvitation();
+                            break;
+
+                        case "mmdecline":
+                            await targetClient.MatchmakingDeclineInvitation();
+                            break;
+
+                        case "mmselect":
+                            await targetClient.MatchmakingToggleSelection(int.Parse(args[0]));
                             break;
 
                         default:
