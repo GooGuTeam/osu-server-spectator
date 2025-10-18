@@ -3,6 +3,7 @@
 
 // ReSharper disable InconsistentNaming (matches database table)
 
+using osu.Game.Beatmaps;
 using System;
 
 namespace osu.Server.Spectator.Database.Models

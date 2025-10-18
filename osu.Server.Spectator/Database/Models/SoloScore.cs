@@ -5,6 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.CodeAnalysis;
+using Newtonsoft.Json;
+using osu.Game.Online.API;
+using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Scoring;
+
 
 namespace osu.Server.Spectator.Database.Models
 {

@@ -1,7 +1,18 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Dapper;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using osu.Game.Online;
 using osu.Server.Spectator.Authentication;
+using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs;
 using osu.Server.Spectator.Hubs.Metadata;
 using osu.Server.Spectator.Hubs.Multiplayer;

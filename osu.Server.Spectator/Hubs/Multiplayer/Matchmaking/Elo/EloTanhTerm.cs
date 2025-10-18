@@ -4,6 +4,7 @@
 // Portions of this file are adapted from Elo-MMR (https://github.com/EbTech/Elo-MMR)
 // See THIRD_PARTY_LICENCES in the repository root for full licence text.
 
+using Newtonsoft.Json;
 using System;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo

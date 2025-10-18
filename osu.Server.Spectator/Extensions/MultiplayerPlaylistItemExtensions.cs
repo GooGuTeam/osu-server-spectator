@@ -1,9 +1,14 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Game.Online.API;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Rooms;
+using osu.Game.Utils;
 using osu.Server.Spectator.Helpers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace osu.Server.Spectator.Extensions
 {

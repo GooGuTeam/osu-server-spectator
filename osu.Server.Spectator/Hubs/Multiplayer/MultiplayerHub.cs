@@ -1,13 +1,24 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using MessagePack;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+using osu.Game.Online;
+using osu.Game.Online.API;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.Countdown;
+using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
+using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Services;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer

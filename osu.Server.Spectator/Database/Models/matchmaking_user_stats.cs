@@ -3,6 +3,7 @@
 
 // ReSharper disable InconsistentNaming (matches database table)
 
+using Newtonsoft.Json;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
 using System;
 

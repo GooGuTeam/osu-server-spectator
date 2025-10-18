@@ -1,6 +1,10 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Rooms;
 using System;
 using System.IO;
 using System.Linq;

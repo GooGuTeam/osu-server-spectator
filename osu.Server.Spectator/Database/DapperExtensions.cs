@@ -4,6 +4,7 @@
 using System;
 using System.Data;
 using System.Threading;
+using Dapper;
 
 namespace osu.Server.Spectator.Database
 {

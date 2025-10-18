@@ -1,9 +1,18 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+using osu.Game.Online;
+using osu.Game.Online.API;
+using osu.Game.Online.Matchmaking;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Rooms;
+using osu.Game.Rulesets;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

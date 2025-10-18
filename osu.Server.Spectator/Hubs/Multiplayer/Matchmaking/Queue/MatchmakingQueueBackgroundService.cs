@@ -1,10 +1,20 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using osu.Game.Online.API;
+using osu.Game.Online.Matchmaking;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
 using osu.Server.Spectator.Services;
+using Sentry;
+using StatsdClient;
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
@@ -234,7 +244,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 BeatmapID = b.beatmap_id,
                 BeatmapChecksum = b.checksum!,
                 RulesetID = pool.ruleset_id,
-                StarRating = b.difficultyrating,
+                StarRating = b.difficulty_rating,
                 RequiredMods = JsonConvert.DeserializeObject<APIMod[]>(b.mods ?? string.Empty) ?? [],
             }).ToArray();
         }

@@ -9,6 +9,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.JsonWebTokens;
+using MySqlConnector;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Scoring;
 
 namespace osu.Server.Spectator.Database
 {
@@ -199,10 +205,7 @@ namespace osu.Server.Spectator.Database
             END as playmode,
             14 as osu_file_version
         FROM beatmaps
-        WHERE id IN @BeatmapIds AND deleted_at IS NULL", new
-            {
-                BeatmapIds = beatmapIds
-            })).ToArray();
+        WHERE id IN @BeatmapIds AND deleted_at IS NULL", new { BeatmapIds = beatmapIds })).ToArray();
         }
 
         public async Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId)
@@ -229,10 +232,7 @@ namespace osu.Server.Spectator.Database
             END as playmode,
             14 as osu_file_version
         FROM beatmaps
-        WHERE beatmapset_id=@BeatmapSetId AND deleted_at IS NULL", new
-            {
-                BeatmapSetId = beatmapSetId
-            })).ToArray();
+        WHERE beatmapset_id=@BeatmapSetId AND deleted_at IS NULL", new { BeatmapSetId = beatmapSetId })).ToArray();
         }
 
         public async Task MarkRoomActiveAsync(MultiplayerRoom room)
@@ -454,7 +454,8 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
 
-            return (await connection.QueryAsync<multiplayer_playlist_item>("SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.room_id = @RoomId", new { RoomId = roomId })).ToArray();
+            return (await connection.QueryAsync<multiplayer_playlist_item>("SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.room_id = @RoomId",
+                new { RoomId = roomId })).ToArray();
         }
 
         public async Task MarkScoreHasReplay(Score score)
@@ -651,8 +652,9 @@ namespace osu.Server.Spectator.Database
                 new { After = after });
         }
 
-        public async Task ToggleUserPresenceAsync(int userId, bool visible)
+        public Task ToggleUserPresenceAsync(int userId, bool visible)
         {
+            return Task.CompletedTask;
             // TODO: add allow_visible in g0v0-server
             // var connection = await getConnectionAsync();
             //

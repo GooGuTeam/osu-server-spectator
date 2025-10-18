@@ -1,6 +1,12 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Microsoft.AspNetCore.Mvc;
+using osu.Game.Online.Matchmaking;
+using osu.Game.Online.Matchmaking.Events;
+using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
+using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
