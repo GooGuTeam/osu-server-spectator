@@ -1,13 +1,12 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using Moq;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database.Models;
+using System.Diagnostics;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace osu.Server.Spectator.Tests.Multiplayer
@@ -316,7 +315,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 var room = usage.Item;
                 Debug.Assert(room != null);
 
-                Assert.Equal(4, room.Queue.CurrentItem.ID);
+                Assert.Equal(4, room.Controller.CurrentItem.ID);
             }
         }
 

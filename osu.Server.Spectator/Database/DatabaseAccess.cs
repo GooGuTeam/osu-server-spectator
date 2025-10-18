@@ -1,6 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Helpers;
+using osu.Server.Spectator.Services;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,8 +15,6 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using MySqlConnector;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Scoring;
-using osu.Server.Spectator.Database.Models;
-using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Database
 {
@@ -104,7 +105,7 @@ namespace osu.Server.Spectator.Database
             beatmapset_id,
             checksum,
             beatmap_status as approved,
-            difficulty_rating as difficultyrating,
+            difficulty_rating,
             total_length,
             CASE
                 WHEN mode = 'osu' THEN 0
@@ -180,13 +181,58 @@ namespace osu.Server.Spectator.Database
                 new { UserId = userId, GameMode = gamemode, PlayTime = playTime });
         }
 
+        public async Task<database_beatmap[]> GetBeatmapsAsync(int[] beatmapIds)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<database_beatmap>(@"SELECT
+            id as beatmap_id,
+            beatmapset_id,
+            checksum,
+            beatmap_status as approved,
+            difficulty_rating,
+            total_length,
+            CASE
+                WHEN mode = 'osu' THEN 0
+                WHEN mode = 'taiko' THEN 1
+                WHEN mode = 'fruits' THEN 2
+                WHEN mode = 'mania' THEN 3
+                WHEN mode = 'osurx' THEN 4
+                WHEN mode = 'osuap' THEN 5
+                WHEN mode = 'taikorx' THEN 6
+                WHEN mode = 'fruitsrx' THEN 7
+                ELSE 0
+            END as playmode,
+            14 as osu_file_version
+        FROM beatmaps
+        WHERE id IN @BeatmapIds AND deleted_at IS NULL", new { BeatmapIds = beatmapIds })).ToArray();
+        }
+
         public async Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId)
         {
             var connection = await getConnectionAsync();
 
-            return (await connection.QueryAsync<database_beatmap>(
-                "SELECT id as beatmap_id, beatmapset_id, checksum, beatmap_status as approved, difficulty_rating as difficultyrating, mode as playmode, 0 as osu_file_version FROM beatmaps WHERE beatmapset_id = @BeatmapSetId AND deleted_at IS NULL",
-                new { BeatmapSetId = beatmapSetId })).ToArray();
+            return (await connection.QueryAsync<database_beatmap>(@"SELECT
+            id as beatmap_id,
+            beatmapset_id,
+            checksum,
+            beatmap_status as approved,
+            difficulty_rating,
+            total_length,
+            CASE
+                WHEN mode = 'osu' THEN 0
+                WHEN mode = 'taiko' THEN 1
+                WHEN mode = 'fruits' THEN 2
+                WHEN mode = 'mania' THEN 3
+                WHEN mode = 'osurx' THEN 4
+                WHEN mode = 'osuap' THEN 5
+                WHEN mode = 'taikorx' THEN 6
+                WHEN mode = 'fruitsrx' THEN 7
+                ELSE 0
+            END as playmode,
+            14 as osu_file_version
+        FROM beatmaps
+        WHERE beatmapset_id=@BeatmapSetId AND deleted_at IS NULL", new { BeatmapSetId = beatmapSetId })).ToArray();
         }
 
         public async Task MarkRoomActiveAsync(MultiplayerRoom room)
@@ -315,7 +361,7 @@ namespace osu.Server.Spectator.Database
             var connection = await getConnectionAsync();
 
             return await connection.QuerySingleAsync<multiplayer_playlist_item>(
-                "SELECT * FROM room_playlists WHERE id = @Id AND room_id = @RoomId",
+                "SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.id = @Id AND p.room_id = @RoomId",
                 new { Id = playlistItemId, RoomId = roomId });
         }
 
@@ -391,7 +437,6 @@ namespace osu.Server.Spectator.Database
 
             // Expire all non-expired items from the playlist.
             // We're not removing them because they may be linked to other tables (e.g. `multiplayer_realtime_room_events`, `multiplayer_scores_high`, etc.)
-            // TODO: Re-enable this when `osu_api.multiplayer_score_links` exists. + " AND (SELECT COUNT(*) FROM multiplayer_score_links l WHERE l.playlist_item_id = p.id) = 0"
             await connection.ExecuteAsync(
                 "UPDATE room_playlists p"
                 + " SET p.expired = 1, played_at = NOW(), updated_at = NOW()"
@@ -409,7 +454,8 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
 
-            return (await connection.QueryAsync<multiplayer_playlist_item>("SELECT * FROM room_playlists WHERE room_id = @RoomId", new { RoomId = roomId })).ToArray();
+            return (await connection.QueryAsync<multiplayer_playlist_item>("SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.room_id = @RoomId",
+                new { RoomId = roomId })).ToArray();
         }
 
         public async Task MarkScoreHasReplay(Score score)
@@ -535,6 +581,18 @@ namespace osu.Server.Spectator.Database
                 new { scoreId = scoreId });
         }
 
+        public async Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<SoloScore>(
+                "SELECT `scores`.`id`, `scores`.`total_score`, `scores`.`user_id`, `scores`.`accuracy`, `scores`.`mods`, `scores`.`maximum_statistics`, `scores`.`pp`, `scores`.`n300`, `scores`.`n100`, `scores`.`n50`, `scores`.`nmiss`, `scores`.`ngeki`, `scores`.`nkatu`, `scores`.`nlarge_tick_miss`, `scores`.`nlarge_tick_hit`, `scores`.`nslider_tail_hit`, `scores`.`nsmall_tick_hit`, `scores`.`max_combo` FROM `scores` "
+                + "JOIN `playlist_best_scores` ON `playlist_best_scores`.`score_id` = `scores`.`id` "
+                + "WHERE `playlist_best_scores`.`playlist_id` = @playlistItemId "
+                + "AND `playlist_best_scores`.`room_id` = @roomId "
+                , new { playlistItemId = playlistItemId, roomId = roomId }));
+        }
+
         public async Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long roomId, long playlistItemId, ulong afterScoreId = 0)
         {
             var connection = await getConnectionAsync();
@@ -592,6 +650,90 @@ namespace osu.Server.Spectator.Database
             return await connection.QueryAsync<beatmap_sync>(
                 "SELECT `beatmapset_id`, `updated_at` FROM beatmap_sync WHERE updated_at > @After",
                 new { After = after });
+        }
+
+        public Task ToggleUserPresenceAsync(int userId, bool visible)
+        {
+            return Task.CompletedTask;
+            // TODO: add allow_visible in g0v0-server
+            // var connection = await getConnectionAsync();
+            //
+            // await connection.ExecuteAsync(
+            //     "UPDATE `phpbb_users` SET `user_allow_viewonline` = @visible WHERE `user_id` = @userId",
+            //     new
+            //     {
+            //         visible = visible,
+            //         userId = userId
+            //     });
+        }
+
+        public async Task<float> GetUserPPAsync(int userId, int rulesetId)
+        {
+            var connection = await getConnectionAsync();
+
+            return await connection.QuerySingleOrDefaultAsync<float>($"SELECT `pp` FROM lazer_user_statistics WHERE `user_id` = @userId AND `mode` = @mode",
+                new { userId = userId, mode = GameModeHelper.GameModeToString(rulesetId) });
+        }
+
+        public async Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync()
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `active` = 1")).ToArray();
+        }
+
+        public async Task<matchmaking_pool?> GetMatchmakingPoolAsync(int poolId)
+        {
+            var connection = await getConnectionAsync();
+
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `id` = @PoolId", new { PoolId = poolId });
+        }
+
+        public async Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(int poolId)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<matchmaking_pool_beatmap>("SELECT p.*, b.checksum, b.difficulty_rating FROM `matchmaking_pool_beatmaps` p "
+                                                                          + "JOIN `beatmaps` b ON p.beatmap_id = b.id "
+                                                                          + "WHERE p.pool_id = @PoolId", new { PoolId = poolId })).ToArray();
+        }
+
+        public async Task IncrementMatchmakingSelectionCount(matchmaking_pool_beatmap[] beatmaps)
+        {
+            var connection = await getConnectionAsync();
+
+            await connection.ExecuteAsync("UPDATE matchmaking_pool_beatmaps "
+                                          + "SET selection_count = selection_count + 1 "
+                                          + "WHERE id IN @ItemIDs", new { ItemIDs = beatmaps.Select(b => b.id).ToArray() });
+        }
+
+        public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId)
+        {
+            var connection = await getConnectionAsync();
+
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `ruleset_id` = @RulesetId",
+                new { UserId = userId, RulesetId = rulesetId });
+        }
+
+        public async Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats)
+        {
+            var connection = await getConnectionAsync();
+
+            await connection.ExecuteAsync("INSERT INTO `matchmaking_user_stats` (`user_id`, `ruleset_id`, `first_placements`, `total_points`, `elo_data`, `created_at`, `updated_at`) "
+                                          + "VALUES (@UserId, @RulesetId, @FirstPlacements, @TotalPoints, @EloData, NOW(), NOW()) "
+                                          + "ON DUPLICATE KEY UPDATE "
+                                          + "`first_placements` = @FirstPlacements, "
+                                          + "`total_points` = @TotalPoints, "
+                                          + "`elo_data` = @EloData, "
+                                          + "`updated_at` = NOW()",
+                new
+                {
+                    UserId = stats.user_id,
+                    RulesetId = stats.ruleset_id,
+                    FirstPlacements = stats.first_placements,
+                    TotalPoints = stats.total_points,
+                    EloData = stats.elo_data
+                });
         }
 
         public void Dispose()

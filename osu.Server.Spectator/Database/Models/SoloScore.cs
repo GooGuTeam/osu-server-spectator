@@ -2,11 +2,15 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json;
+using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
+
 
 namespace osu.Server.Spectator.Database.Models
 {
@@ -37,18 +41,18 @@ namespace osu.Server.Spectator.Database.Models
 
         public uint total_score { get; set; }
 
-        public SoloScoreData ScoreData = new SoloScoreData();
-
-        public string data
-        {
-            get => JsonConvert.SerializeObject(ScoreData);
-            set
-            {
-                var soloScoreData = JsonConvert.DeserializeObject<SoloScoreData>(value);
-                if (soloScoreData != null)
-                    ScoreData = soloScoreData;
-            }
-        }
+        public uint n300 { get; set; }
+        public uint n100 { get; set; }
+        public uint n50 { get; set; }
+        public uint nmiss { get; set; }
+        public uint ngeki { get; set; }
+        public uint nkatu { get; set; }
+        public uint? nlarge_tick_miss { get; set; }
+        public uint? nlarge_tick_hit { get; set; }
+        public uint? nslider_tail_hit { get; set; }
+        public uint? nsmall_tick_hit { get; set; }
+        public string? mods { get; set; }
+        public string? maximum_statistics { get; set; }
 
         public double? pp { get; set; }
 
@@ -75,9 +79,21 @@ namespace osu.Server.Spectator.Database.Models
             Rank = rank,
             StartedAt = started_at,
             EndedAt = ended_at,
-            Mods = ScoreData.Mods,
-            Statistics = ScoreData.Statistics,
-            MaximumStatistics = ScoreData.MaximumStatistics,
+            Mods = JsonConvert.DeserializeObject<APIMod[]>(mods ?? "[]") ?? Array.Empty<APIMod>(),
+            Statistics = new Dictionary<HitResult, int>
+                {
+                    { HitResult.Great, (int)n300 },
+                    { HitResult.Good, (int)n100 },
+                    { HitResult.Meh, (int)n50 },
+                    { HitResult.Miss, (int)nmiss },
+                    { HitResult.Perfect, (int)ngeki },
+                    { HitResult.Ok, (int)nkatu },
+                    { HitResult.LargeTickMiss, (int?)(nlarge_tick_miss ?? 0) ?? 0 },
+                    { HitResult.LargeTickHit, (int?)(nlarge_tick_hit ?? 0) ?? 0 },
+                    { HitResult.SliderTailHit, (int?)(nslider_tail_hit ?? 0) ?? 0 },
+                    { HitResult.SmallTickHit, (int?)(nsmall_tick_hit ?? 0) ?? 0 },
+            },
+            MaximumStatistics = JsonConvert.DeserializeObject<Dictionary<HitResult, int>>(maximum_statistics ?? "{}") ?? new Dictionary<HitResult, int>(),
             LegacyTotalScore = (int?)legacy_total_score,
             LegacyScoreId = legacy_score_id,
             ID = id,

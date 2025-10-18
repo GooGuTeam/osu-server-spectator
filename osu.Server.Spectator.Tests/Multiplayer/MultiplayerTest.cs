@@ -1,11 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -16,7 +11,13 @@ using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Hubs.Multiplayer;
+using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace osu.Server.Spectator.Tests.Multiplayer
 {
@@ -145,7 +146,8 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 new ChatFilters(DatabaseFactory.Object),
                 hubContext.Object,
                 LegacyIO.Object,
-                new MultiplayerEventLogger(loggerFactoryMock.Object, DatabaseFactory.Object));
+                new MultiplayerEventLogger(loggerFactoryMock.Object, DatabaseFactory.Object),
+                new Mock<IMatchmakingQueueBackgroundService>().Object);
             Hub.Groups = Groups.Object;
             Hub.Clients = Clients.Object;
 
@@ -278,16 +280,22 @@ namespace osu.Server.Spectator.Tests.Multiplayer
         }
 
         protected void InitialiseRoom(long roomId)
+            => InitialiseRoom(roomId, 1);
+
+        protected void InitialiseRoom(long roomId, int playlistItemCount)
         {
             if (playlistItems.All(i => i.room_id != roomId))
             {
-                playlistItems.Add(new multiplayer_playlist_item
+                for (int i = 0; i < playlistItemCount; i++)
                 {
-                    id = ++currentItemId,
-                    room_id = roomId,
-                    beatmap_id = 1234,
-                    owner_id = int.Parse(Hub.Context.UserIdentifier!)
-                });
+                    playlistItems.Add(new multiplayer_playlist_item
+                    {
+                        id = ++currentItemId,
+                        room_id = roomId,
+                        beatmap_id = 1234,
+                        owner_id = int.Parse(Hub.Context.UserIdentifier!)
+                    });
+                }
             }
         }
     }

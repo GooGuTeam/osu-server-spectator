@@ -1,15 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
-using Microsoft.Extensions.Logging;
 using osu.Game.Online;
 using osu.Game.Online.Metadata;
 using osu.Game.Users;
@@ -19,6 +13,12 @@ using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Spectator;
 using StackExchange.Redis;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using Microsoft.Extensions.Logging;
+using System.Threading.Tasks;
 using BeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
 
 namespace osu.Server.Spectator.Hubs.Metadata
@@ -116,18 +116,21 @@ namespace osu.Server.Spectator.Hubs.Metadata
         public async Task<BeatmapUpdates> GetChangesSince(int queueId)
         {
             var after = TimeHelper.ToDateTimeOffset(queueId);
+
             using (var db = databaseFactory.GetInstance())
             {
                 var beatmapSets = await db.GetChangedBeatmapSetsAsync(after);
 
                 List<int> beatmapSetIDs = new List<int>();
                 DateTimeOffset? last_update = null;
+
                 foreach (var b in beatmapSets)
                 {
                     beatmapSetIDs.Add(b.beatmapset_id);
                     if (last_update == null || b.updated_at > last_update)
                         last_update = b.updated_at;
                 }
+
                 if (last_update == null)
                     last_update = DateTimeOffset.UtcNow;
                 return new BeatmapUpdates(beatmapSetIDs.ToArray(), TimeHelper.ToMappedInt(last_update.Value));
@@ -189,6 +192,20 @@ namespace osu.Server.Spectator.Hubs.Metadata
                     broadcastUserPresenceUpdate(usage.Item.UserId, usage.Item.ToUserPresence()),
                     Clients.Caller.UserPresenceUpdated(usage.Item.UserId, usage.Item.ToUserPresence())
                 );
+            }
+
+            switch (status)
+            {
+                case UserStatus.Online:
+                case UserStatus.DoNotDisturb:
+                    using (var db = databaseFactory.GetInstance())
+                        await db.ToggleUserPresenceAsync(Context.GetUserId(), visible: true);
+                    break;
+
+                case UserStatus.Offline:
+                    using (var db = databaseFactory.GetInstance())
+                        await db.ToggleUserPresenceAsync(Context.GetUserId(), visible: false);
+                    break;
             }
         }
 

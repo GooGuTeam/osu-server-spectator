@@ -3,8 +3,8 @@
 
 // ReSharper disable InconsistentNaming (matches database table)
 
-using System;
 using osu.Game.Beatmaps;
+using System;
 
 namespace osu.Server.Spectator.Database.Models
 {
@@ -15,7 +15,7 @@ namespace osu.Server.Spectator.Database.Models
         public int beatmapset_id { get; set; }
         public string? checksum { get; set; }
         public BeatmapOnlineStatus approved { get; set; }
-        public double difficultyrating { get; set; }
+        public double difficulty_rating { get; set; }
         public ushort playmode { get; set; }
         public int total_length { get; set; }
         public ushort osu_file_version { get; set; } = 14;

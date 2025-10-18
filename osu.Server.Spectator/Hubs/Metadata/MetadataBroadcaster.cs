@@ -1,19 +1,17 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
-using System.Linq;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.Metadata;
-using osu.Server.QueueProcessor;
 using osu.Server.Spectator.Database;
-using ServerBeatmapUpdates = osu.Server.QueueProcessor.BeatmapUpdates;
-using ClientBeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
-using System.Threading.Tasks;
-using System.Threading;
 using osu.Server.Spectator.Database.Models;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using ClientBeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
 
 namespace osu.Server.Spectator.Hubs.Metadata
 {
