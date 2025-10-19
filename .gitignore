@@ -278,6 +278,13 @@ __pycache__/
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 
+.idea/.idea.osu.Server.Spectator/.idea/material_theme_project_new.xml
+.idea/.idea.osu.Server.Spectator/.idea/copilot.data.migration.ask2agent.xml
+.idea/.idea.osu.Server.Spectator/.idea/copilot.data.migration.edit.xml
+.idea/.idea.osu.Server.Spectator/.idea/copilot.data.migration.agent.xml
+.idea/.idea.osu.Server.Spectator/.idea/copilot.data.migration.ask.xml
+
+
 # Gradle
 .idea/**/gradle.xml
 .idea/**/libraries
