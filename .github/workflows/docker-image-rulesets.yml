@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}-custom-rulesets
   RULESET_REPO: GooGuTeam/custom-rulesets
+  REPO_OWNER: GooGuTeam
 
 jobs:
   build:
