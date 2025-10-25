@@ -5,6 +5,7 @@ using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Services;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,8 +18,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
         private readonly IMultiplayerHubContext hub;
         private readonly TeamVersusRoomState state;
 
-        public TeamVersusMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory)
-            : base(room, hub, dbFactory)
+        public TeamVersusMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
+            : base(room, hub, dbFactory, manager)
         {
             this.room = room;
             this.hub = hub;

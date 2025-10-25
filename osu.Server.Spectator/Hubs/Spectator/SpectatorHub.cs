@@ -18,7 +18,9 @@ using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Helpers;
+using osu.Server.Spectator.Services;
 using StackExchange.Redis;
+
 
 namespace osu.Server.Spectator.Hubs.Spectator
 {
@@ -38,6 +40,7 @@ namespace osu.Server.Spectator.Hubs.Spectator
         private readonly ScoreUploader scoreUploader;
         private readonly IScoreProcessedSubscriber scoreProcessedSubscriber;
         private readonly IConnectionMultiplexer redis;
+        private readonly RulesetManager manager;
 
         public SpectatorHub(
             ILoggerFactory loggerFactory,
@@ -45,13 +48,15 @@ namespace osu.Server.Spectator.Hubs.Spectator
             IDatabaseFactory databaseFactory,
             ScoreUploader scoreUploader,
             IScoreProcessedSubscriber scoreProcessedSubscriber,
-            IConnectionMultiplexer redis)
+            IConnectionMultiplexer redis,
+            RulesetManager manager)
             : base(loggerFactory, users)
         {
             this.databaseFactory = databaseFactory;
             this.scoreUploader = scoreUploader;
             this.scoreProcessedSubscriber = scoreProcessedSubscriber;
             this.redis = redis;
+            this.manager = manager;
         }
 
         private IDatabase redisDatabase => redis.GetDatabase();
@@ -97,7 +102,7 @@ namespace osu.Server.Spectator.Hubs.Spectator
                         {
                             APIMods = state.Mods.ToArray(),
                             User = new APIUser { Id = userId, Username = username, },
-                            Ruleset = LegacyHelper.GetRulesetFromLegacyID(state.RulesetID.Value).RulesetInfo,
+                            Ruleset = manager.GetRuleset(state.RulesetID.Value).RulesetInfo,
                             BeatmapInfo = new BeatmapInfo { OnlineID = state.BeatmapID.Value, MD5Hash = beatmap.checksum, Status = beatmap.approved },
                             MaximumStatistics = state.MaximumStatistics
                         }
@@ -249,7 +254,7 @@ namespace osu.Server.Spectator.Hubs.Spectator
             var message = messages[0];
             int beforeTime = (int)message["time"];
             redisDatabase.KeyDelete(key);
-            string gamemode = GameModeHelper.GameModeToStringSpecial(item.Score!.ScoreInfo.RulesetID, item.Score.ScoreInfo.APIMods);
+            string gamemode = GameModeHelper.GameModeToStringSpecial(item.Score!.ScoreInfo.Ruleset, item.Score.ScoreInfo.APIMods);
 
             using (var db = databaseFactory.GetInstance())
             {

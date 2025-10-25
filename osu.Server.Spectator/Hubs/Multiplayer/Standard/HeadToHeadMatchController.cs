@@ -4,6 +4,7 @@
 using osu.Game.Online.Multiplayer;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Services;
 using System.Threading.Tasks;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
@@ -13,8 +14,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
         private readonly ServerMultiplayerRoom room;
         private readonly IMultiplayerHubContext hub;
 
-        public HeadToHeadMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory)
-            : base(room, hub, dbFactory)
+        public HeadToHeadMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
+            : base(room, hub, dbFactory, manager)
         {
             this.room = room;
             this.hub = hub;

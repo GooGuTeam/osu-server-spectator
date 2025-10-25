@@ -8,6 +8,7 @@ using osu.Game.Rulesets;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Extensions;
+using osu.Server.Spectator.Services;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,15 +29,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
         private readonly ServerMultiplayerRoom room;
         private readonly IMultiplayerHubContext hub;
         private readonly IDatabaseFactory dbFactory;
+        private readonly RulesetManager manager;
 
         private QueueMode queueMode;
         private int currentPlaylistItemIndex;
 
-        protected StandardMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory)
+        protected StandardMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
         {
             this.room = room;
             this.hub = hub;
             this.dbFactory = dbFactory;
+            this.manager = manager;
 
             queueMode = room.Settings.QueueMode;
         }
@@ -155,7 +158,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(manager);
                 item.OwnerID = user.UserID;
                 item.StarRating = beatmap.difficulty_rating;
 
@@ -185,7 +188,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(manager);
                 item.OwnerID = user.UserID;
                 item.StarRating = beatmap.difficulty_rating;
 

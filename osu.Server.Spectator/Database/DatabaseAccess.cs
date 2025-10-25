@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Server.Spectator.Database.Models;
-using osu.Server.Spectator.Helpers;
 using osu.Server.Spectator.Services;
 using System;
 using System.Collections.Generic;
@@ -23,11 +22,13 @@ namespace osu.Server.Spectator.Database
         private MySqlConnection? openConnection;
         private readonly ILogger<DatabaseAccess> logger;
         private readonly ISharedInterop sharedInterop;
+        private readonly RulesetManager manager;
 
-        public DatabaseAccess(ILoggerFactory loggerFactory, ISharedInterop sharedInterop)
+        public DatabaseAccess(ILoggerFactory loggerFactory, ISharedInterop sharedInterop, RulesetManager manager)
         {
             logger = loggerFactory.CreateLogger<DatabaseAccess>();
             this.sharedInterop = sharedInterop;
+            this.manager = manager;
         }
 
         public async Task<int?> GetUserIdFromTokenAsync(JsonWebToken jwtToken)
@@ -671,8 +672,10 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
 
+            var ruleset = manager.GetRuleset(rulesetId);
+
             return await connection.QuerySingleOrDefaultAsync<float>($"SELECT `pp` FROM lazer_user_statistics WHERE `user_id` = @userId AND `mode` = @mode",
-                new { userId = userId, mode = GameModeHelper.GameModeToString(rulesetId) });
+                new { userId = userId, mode = ruleset.ShortName });
         }
 
         public async Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync()

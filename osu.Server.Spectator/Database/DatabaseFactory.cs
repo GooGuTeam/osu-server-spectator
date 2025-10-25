@@ -10,13 +10,15 @@ namespace osu.Server.Spectator.Database
     {
         private readonly ILoggerFactory loggerFactory;
         private readonly ISharedInterop sharedInterop;
+        private readonly RulesetManager rulesetManager;
 
-        public DatabaseFactory(ILoggerFactory loggerFactory, ISharedInterop sharedInterop)
+        public DatabaseFactory(ILoggerFactory loggerFactory, ISharedInterop sharedInterop, RulesetManager manager)
         {
             this.loggerFactory = loggerFactory;
             this.sharedInterop = sharedInterop;
+            rulesetManager = manager;
         }
 
-        public IDatabaseAccess GetInstance() => new DatabaseAccess(loggerFactory, sharedInterop);
+        public IDatabaseAccess GetInstance() => new DatabaseAccess(loggerFactory, sharedInterop, rulesetManager);
     }
 }

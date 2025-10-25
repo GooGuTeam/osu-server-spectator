@@ -5,7 +5,7 @@ using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Game.Utils;
-using osu.Server.Spectator.Helpers;
+using osu.Server.Spectator.Services;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -21,10 +21,12 @@ namespace osu.Server.Spectator.Extensions
         /// <param name="user">The <see cref="MultiplayerRoomUser"/> to validate the mods of.</param>
         /// <param name="proposedMods">The proposed user mods to check against the <see cref="MultiplayerPlaylistItem"/>.</param>
         /// <param name="validMods">The set of mods which _are_ valid.</param>
+        /// <param name="manager">The ruleset manager</param>
         /// <returns>Whether all user mods are valid for the <see cref="MultiplayerPlaylistItem"/>.</returns>
-        public static bool ValidateUserMods(this MultiplayerPlaylistItem item, MultiplayerRoomUser user, IEnumerable<APIMod> proposedMods, [NotNullWhen(false)] out IEnumerable<APIMod>? validMods)
+        public static bool ValidateUserMods(this MultiplayerPlaylistItem item, MultiplayerRoomUser user, IEnumerable<APIMod> proposedMods, [NotNullWhen(false)] out IEnumerable<APIMod>? validMods,
+                                            RulesetManager manager)
         {
-            var ruleset = LegacyHelper.GetRulesetFromLegacyID(user.RulesetId ?? item.RulesetID);
+            var ruleset = manager.GetRuleset(user.RulesetId ?? item.RulesetID);
 
             bool proposedWereValid = true;
             proposedWereValid &= ModUtils.InstantiateValidModsForRuleset(ruleset, proposedMods, out var valid);
@@ -60,9 +62,9 @@ namespace osu.Server.Spectator.Extensions
         /// Ensures that a <see cref="MultiplayerPlaylistItem"/>'s required and allowed mods are compatible with each other and the room's ruleset.
         /// </summary>
         /// <exception cref="InvalidStateException">If the mods are invalid.</exception>
-        public static void EnsureModsValid(this MultiplayerPlaylistItem item)
+        public static void EnsureModsValid(this MultiplayerPlaylistItem item, RulesetManager manager)
         {
-            var ruleset = LegacyHelper.GetRulesetFromLegacyID(item.RulesetID);
+            var ruleset = manager.GetRuleset(item.RulesetID);
 
             // check against ruleset
             if (!ModUtils.InstantiateValidModsForRuleset(ruleset, item.RequiredMods, out var requiredMods))
