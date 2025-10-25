@@ -12,6 +12,7 @@ using osu.Game.Rulesets;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
+using osu.Server.Spectator.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -39,6 +40,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly ILogger logger;
         private readonly MultiplayerEventLogger multiplayerEventLogger;
         private readonly IConnectionMultiplexer redis;
+        private readonly RulesetManager manager;
 
         public MultiplayerHubContext(
             IHubContext<MultiplayerHub> context,
@@ -47,12 +49,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             ILoggerFactory loggerFactory,
             IDatabaseFactory databaseFactory,
             MultiplayerEventLogger multiplayerEventLogger,
-            IConnectionMultiplexer redis)
+            IConnectionMultiplexer redis,
+            RulesetManager manager)
         {
             this.context = context;
             this.rooms = rooms;
             this.users = users;
             this.redis = redis;
+            this.manager = manager;
             this.databaseFactory = databaseFactory;
             this.multiplayerEventLogger = multiplayerEventLogger;
 
@@ -174,7 +178,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             foreach (var user in room.Users)
             {
-                if (!room.Controller.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods))
+                if (!room.Controller.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods, manager))
                     await ChangeUserMods(validMods, room, user);
             }
         }
@@ -213,7 +217,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             user.BeatmapId = beatmapId;
             user.RulesetId = rulesetId;
 
-            if (!room.Controller.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods))
+            if (!room.Controller.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods, manager))
             {
                 user.Mods = validMods.ToArray();
                 await context.Clients.Group(MultiplayerHub.GetGroupId(room.RoomID)).SendAsync(nameof(IMultiplayerClient.UserModsChanged), user.UserID, user.Mods);
@@ -226,7 +230,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             var newModList = newMods.ToList();
 
-            if (!room.Controller.CurrentItem.ValidateUserMods(user, newModList, out var validMods))
+            if (!room.Controller.CurrentItem.ValidateUserMods(user, newModList, out var validMods, manager))
                 throw new InvalidStateException($"Incompatible mods were selected: {string.Join(',', newModList.Except(validMods).Select(m => m.Acronym))}");
 
             if (user.Mods.SequenceEqual(newModList))

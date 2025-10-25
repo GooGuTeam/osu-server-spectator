@@ -14,6 +14,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
@@ -28,12 +29,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly IMultiplayerHubContext hub;
         private readonly IDatabaseFactory dbFactory;
         private IMatchController? matchController;
+        private readonly RulesetManager manager;
 
-        public ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory)
+        public ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
             : base(roomId)
         {
             this.hub = hub;
             this.dbFactory = dbFactory;
+            this.manager = manager;
         }
 
         public async Task Initialise()
@@ -72,10 +75,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     return ChangeMatchType(new MatchmakingMatchController(this, hub, dbFactory));
 
                 case MatchType.TeamVersus:
-                    return ChangeMatchType(new TeamVersusMatchController(this, hub, dbFactory));
+                    return ChangeMatchType(new TeamVersusMatchController(this, hub, dbFactory, manager));
 
                 default:
-                    return ChangeMatchType(new HeadToHeadMatchController(this, hub, dbFactory));
+                    return ChangeMatchType(new HeadToHeadMatchController(this, hub, dbFactory, manager));
             }
         }
 

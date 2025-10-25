@@ -10,6 +10,7 @@ using osu.Server.Spectator.Hubs.Multiplayer;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Spectator;
 using osu.Server.Spectator.Services;
+
 using osu.Server.Spectator.Storage;
 using StackExchange.Redis;
 
@@ -37,7 +38,10 @@ namespace osu.Server.Spectator.Extensions
                                     .AddHostedService<IDailyChallengeUpdater>(ctx => ctx.GetRequiredService<IDailyChallengeUpdater>())
                                     .AddSingleton<MultiplayerEventLogger>()
                                     .AddSingleton<IMatchmakingQueueBackgroundService, MatchmakingQueueBackgroundService>()
-                                    .AddHostedService<IMatchmakingQueueBackgroundService>(ctx => ctx.GetRequiredService<IMatchmakingQueueBackgroundService>());
+                                    .AddHostedService<IMatchmakingQueueBackgroundService>(ctx => ctx.GetRequiredService<IMatchmakingQueueBackgroundService>())
+                                    .AddSingleton<MultiplayerEventLogger>()
+                                    .AddSingleton<RulesetManager>()
+                                    .AddHostedService<RulesetInitializer>();
         }
 
         /// <summary>

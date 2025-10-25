@@ -15,6 +15,7 @@ using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Services;
+
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -33,6 +34,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly ChatFilters chatFilters;
         private readonly ISharedInterop sharedInterop;
         private readonly MultiplayerEventLogger multiplayerEventLogger;
+        private readonly RulesetManager manager;
         private readonly IMatchmakingQueueBackgroundService matchmakingQueueService;
 
         public MultiplayerHub(
@@ -43,8 +45,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             ChatFilters chatFilters,
             IHubContext<MultiplayerHub> hubContext,
             ISharedInterop sharedInterop,
-            IConnectionMultiplexer redis,
             MultiplayerEventLogger multiplayerEventLogger,
+            IConnectionMultiplexer redis,
+            RulesetManager manager,
             IMatchmakingQueueBackgroundService matchmakingQueueService)
             : base(loggerFactory, users)
         {
@@ -52,10 +55,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             this.chatFilters = chatFilters;
             this.sharedInterop = sharedInterop;
             this.multiplayerEventLogger = multiplayerEventLogger;
+            this.manager = manager;
             this.matchmakingQueueService = matchmakingQueueService;
 
             Rooms = rooms;
-            HubContext = new MultiplayerHubContext(hubContext, rooms, users, loggerFactory, databaseFactory, multiplayerEventLogger, redis);
+            HubContext = new MultiplayerHubContext(hubContext, rooms, users, loggerFactory, databaseFactory, multiplayerEventLogger, redis, manager);
         }
 
         public async Task<MultiplayerRoom> CreateRoom(MultiplayerRoom room)
@@ -236,7 +240,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 if (databaseRoom.type != database_match_type.matchmaking && databaseRoom.host_id != Context.GetUserId())
                     throw new InvalidOperationException("Non-host is attempting to join match before host");
 
-                var room = new ServerMultiplayerRoom(roomId, HubContext, databaseFactory)
+                var room = new ServerMultiplayerRoom(roomId, HubContext, databaseFactory, manager)
                 {
                     ChannelID = databaseRoom.channel_id,
                     Settings = new MultiplayerRoomSettings
