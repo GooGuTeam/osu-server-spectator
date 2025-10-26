@@ -2,50 +2,41 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Game.Online.API;
+using osu.Game.Rulesets;
 using System.Linq;
 
 namespace osu.Server.Spectator.Helpers
 {
     public static class GameModeHelper
     {
-        public static string GameModeToString(int gameMode)
+        public static string GameModeToStringSpecial(RulesetInfo ruleset, APIMod[] mods)
         {
-            return gameMode switch
-            {
-                0 => "OSU",
-                1 => "TAIKO",
-                2 => "FRUITS",
-                3 => "MANIA",
-                _ => "Unknown"
-            };
-        }
+            string name = ruleset.ShortName;
 
-        public static string GameModeToStringSpecial(int gameMode, APIMod[] mods)
-        {
-            if ((gameMode != 0 && gameMode != 1 && gameMode != 2) || (!AppSettings.EnableRX && !AppSettings.EnableAP))
+            if ((name != "osu" && name != "taiko" && name != "fruits") || (!AppSettings.EnableRX && !AppSettings.EnableAP))
             {
-                return GameModeToString(gameMode);
+                return ruleset.ShortName;
             }
 
             string[] modAcronyms = mods.Select(m => m.Acronym).ToArray();
 
             if (AppSettings.EnableAP && modAcronyms.Contains("AP"))
             {
-                return "OSUAP";
+                return "osuap";
             }
 
             if (AppSettings.EnableRX && modAcronyms.Contains("RX"))
             {
-                return gameMode switch
+                return ruleset.ShortName switch
                 {
-                    0 => "OSURX",
-                    1 => "TAIKORX",
-                    2 => "FRUITSRX",
-                    _ => "Unknown"
+                    "osu" => "osurx",
+                    "taiko" => "taikorx",
+                    "fruits" => "fruitsrx",
+                    _ => ruleset.ShortName
                 };
             }
 
-            return GameModeToString(gameMode);
+            return ruleset.ShortName;
         }
     }
 }

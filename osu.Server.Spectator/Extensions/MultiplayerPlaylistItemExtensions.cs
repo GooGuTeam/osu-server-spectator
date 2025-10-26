@@ -5,10 +5,12 @@ using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Game.Utils;
-using osu.Server.Spectator.Helpers;
+using osu.Server.Spectator.Services;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace osu.Server.Spectator.Extensions
 {
@@ -21,10 +23,12 @@ namespace osu.Server.Spectator.Extensions
         /// <param name="user">The <see cref="MultiplayerRoomUser"/> to validate the mods of.</param>
         /// <param name="proposedMods">The proposed user mods to check against the <see cref="MultiplayerPlaylistItem"/>.</param>
         /// <param name="validMods">The set of mods which _are_ valid.</param>
+        /// <param name="manager">The ruleset manager</param>
         /// <returns>Whether all user mods are valid for the <see cref="MultiplayerPlaylistItem"/>.</returns>
-        public static bool ValidateUserMods(this MultiplayerPlaylistItem item, MultiplayerRoomUser user, IEnumerable<APIMod> proposedMods, [NotNullWhen(false)] out IEnumerable<APIMod>? validMods)
+        public static bool ValidateUserMods(this MultiplayerPlaylistItem item, MultiplayerRoomUser user, IEnumerable<APIMod> proposedMods, [NotNullWhen(false)] out IEnumerable<APIMod>? validMods,
+                                            RulesetManager manager)
         {
-            var ruleset = LegacyHelper.GetRulesetFromLegacyID(user.RulesetId ?? item.RulesetID);
+            var ruleset = manager.GetRuleset(user.RulesetId ?? item.RulesetID);
 
             bool proposedWereValid = true;
             proposedWereValid &= ModUtils.InstantiateValidModsForRuleset(ruleset, proposedMods, out var valid);
@@ -60,9 +64,9 @@ namespace osu.Server.Spectator.Extensions
         /// Ensures that a <see cref="MultiplayerPlaylistItem"/>'s required and allowed mods are compatible with each other and the room's ruleset.
         /// </summary>
         /// <exception cref="InvalidStateException">If the mods are invalid.</exception>
-        public static void EnsureModsValid(this MultiplayerPlaylistItem item)
+        public static void EnsureModsValid(this MultiplayerPlaylistItem item, RulesetManager manager)
         {
-            var ruleset = LegacyHelper.GetRulesetFromLegacyID(item.RulesetID);
+            var ruleset = manager.GetRuleset(item.RulesetID);
 
             // check against ruleset
             if (!ModUtils.InstantiateValidModsForRuleset(ruleset, item.RequiredMods, out var requiredMods))
@@ -92,6 +96,60 @@ namespace osu.Server.Spectator.Extensions
                 if (!ModUtils.CheckCompatibleSet(requiredMods.Concat(new[] { allowedMod }), out invalid))
                     throw new InvalidStateException($"Invalid combination of required and allowed mods: {string.Join(',', invalid.Select(m => m.Acronym))}");
             }
+        }
+
+        public static async Task<Tuple<string, string>?> ValidateRuleset(this MultiplayerPlaylistItem item, RulesetManager manager, Dictionary<string, string> clientHashes)
+        {
+            if (!AppSettings.CheckRulesetVersion)
+            {
+                return null;
+            }
+
+            var ruleset = manager.GetRuleset(item.RulesetID);
+            var clientHash = clientHashes.GetValueOrDefault(ruleset.ShortName);
+
+            if (ruleset.IsOfficial())
+                return null;
+
+            var latestVersion = await manager.ValidateRulesetHash(ruleset, clientHash ?? string.Empty);
+
+            if (!string.IsNullOrEmpty(latestVersion))
+            {
+                return Tuple.Create(ruleset.ShortName, latestVersion);
+            }
+
+            return null;
+        }
+
+        public static async Task<List<Tuple<string, string>>> ValidateRulesets(this IEnumerable<MultiplayerPlaylistItem> items, RulesetManager manager, Dictionary<string, string> clientHashes)
+        {
+            List<Tuple<string, string>> invalidRulesets = new List<Tuple<string, string>>();
+
+            if (!AppSettings.CheckRulesetVersion)
+            {
+                return invalidRulesets;
+            }
+
+            foreach (var item in items)
+            {
+                var ruleset = manager.GetRuleset(item.RulesetID);
+
+                if (ruleset.IsOfficial())
+                {
+                    continue;
+                }
+
+                var clientHash = clientHashes.GetValueOrDefault(ruleset.ShortName);
+
+                var latestVersion = await manager.ValidateRulesetHash(ruleset, clientHash ?? string.Empty);
+
+                if (!string.IsNullOrEmpty(latestVersion))
+                {
+                    invalidRulesets.Add(Tuple.Create(ruleset.ShortName, latestVersion));
+                }
+            }
+
+            return invalidRulesets;
         }
     }
 }

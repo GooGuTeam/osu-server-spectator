@@ -3,6 +3,8 @@
 
 using System.Threading.Tasks;
 using osu.Game.Online.Multiplayer;
+using osu.Server.Spectator.Entities;
+using System.Collections.Generic;
 using System.IO;
 
 namespace osu.Server.Spectator.Services
@@ -50,5 +52,7 @@ namespace osu.Server.Spectator.Services
         Task EnsureBeatmapPresentAsync(int beatmapId);
 
         void UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream);
+
+        Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync();
     }
 }

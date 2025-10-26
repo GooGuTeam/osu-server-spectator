@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
+using osu.Server.Spectator.Entities;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -183,6 +185,12 @@ namespace osu.Server.Spectator.Services
         {
             var payload = new { score_id = scoreInfoOnlineID, user_id = scoreInfoUserID, beatmap_id = scoreInfoBeatmapId, mreplay = Convert.ToBase64String(outStream.ToArray()) };
             _ = runCommand(HttpMethod.Post, "scores/replay", payload);
+        }
+
+        public async Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync()
+        {
+            string result = await runCommand(HttpMethod.Get, $"ruleset-hashes");
+            return JsonSerializer.Deserialize<Dictionary<string, RulesetVersionEntry>>(result) ?? new Dictionary<string, RulesetVersionEntry>();
         }
 
         [Serializable]

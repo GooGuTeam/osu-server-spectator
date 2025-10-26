@@ -4,6 +4,8 @@
 using MessagePack;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
+using Newtonsoft.Json;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
@@ -25,6 +27,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 {
     public partial class MultiplayerHub : StatefulUserHub<IMultiplayerClient, MultiplayerClientState>, IMultiplayerServer
     {
+        private const string ruleset_hash_header = @"X-Osu-Ruleset-Hashes";
+
         private static readonly MessagePackSerializerOptions message_pack_options = new MessagePackSerializerOptions(new SignalRUnionWorkaroundResolver());
 
         protected readonly EntityStore<ServerMultiplayerRoom> Rooms;
@@ -33,6 +37,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly ChatFilters chatFilters;
         private readonly ISharedInterop sharedInterop;
         private readonly MultiplayerEventLogger multiplayerEventLogger;
+        private readonly RulesetManager manager;
         private readonly IMatchmakingQueueBackgroundService matchmakingQueueService;
 
         public MultiplayerHub(
@@ -43,8 +48,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             ChatFilters chatFilters,
             IHubContext<MultiplayerHub> hubContext,
             ISharedInterop sharedInterop,
-            IConnectionMultiplexer redis,
             MultiplayerEventLogger multiplayerEventLogger,
+            IConnectionMultiplexer redis,
+            RulesetManager manager,
             IMatchmakingQueueBackgroundService matchmakingQueueService)
             : base(loggerFactory, users)
         {
@@ -52,15 +58,24 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             this.chatFilters = chatFilters;
             this.sharedInterop = sharedInterop;
             this.multiplayerEventLogger = multiplayerEventLogger;
+            this.manager = manager;
             this.matchmakingQueueService = matchmakingQueueService;
 
             Rooms = rooms;
-            HubContext = new MultiplayerHubContext(hubContext, rooms, users, loggerFactory, databaseFactory, multiplayerEventLogger, redis);
+            HubContext = new MultiplayerHubContext(hubContext, rooms, users, loggerFactory, databaseFactory, multiplayerEventLogger, redis, manager);
         }
 
         public async Task<MultiplayerRoom> CreateRoom(MultiplayerRoom room)
         {
-            Log($"{Context.GetUserId()} creating room");
+            using (var usage = await GetOrCreateLocalUserState())
+            {
+                Log($"{Context.GetUserId()} creating room");
+                var result = await room.Playlist.ValidateRulesets(manager, usage.Item!.RulesetHashes);
+                if (result.Count > 0)
+                    throw new InvalidStateException("You have one or more outdated or invalid rulesets for the selected playlist items: "
+                                                    + string.Join(", ", result.Select(r => $"(name: {r.Item1}, server-ver: {r.Item2})")));
+            }
+
             using (var db = databaseFactory.GetInstance())
             {
                 if (await db.IsUserRestrictedAsync(Context.GetUserId()))
@@ -89,9 +104,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             using (var userUsage = await GetOrCreateLocalUserState())
             {
-                if (userUsage.Item != null)
+                if (userUsage.Item!.IsUserInRoom())
                 {
-                    // if the user already has a state, it means they are already in a room and can't join another without first leaving.
                     throw new InvalidStateException("Can't join a room when already in another room.");
                 }
 
@@ -126,6 +140,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             await markRoomActive(room);
 
                             roomUsage.Item = room;
+
+                            // Skip ruleset check (checked at CreateRoom).
                         }
                         else
                         {
@@ -136,6 +152,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             if (room.Users.Any(u => u.UserID == roomUser.UserID))
                                 throw new InvalidOperationException($"User {roomUser.UserID} attempted to join room {room.RoomID} they are already present in.");
 
+                            var result = await room.Playlist.ValidateRulesets(manager, userUsage.Item!.RulesetHashes);
+                            if (result.Count > 0)
+                                throw new InvalidStateException("You have one or more outdated or invalid rulesets to join room: "
+                                                                + string.Join(", ", result.Select(r => $"(name: {r.Item1}, server-ver: {r.Item2})")));
+
                             if (!string.IsNullOrEmpty(room.Settings.Password))
                             {
                                 if (room.Settings.Password != password)
@@ -143,7 +164,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             }
                         }
 
-                        userUsage.Item = new MultiplayerClientState(Context.ConnectionId, Context.GetUserId(), roomId);
+                        userUsage.Item!.CurrentRoomID = roomId;
 
                         // because match controllers may send subsequent information via Users collection hooks,
                         // inform clients before adding user to the room.
@@ -161,7 +182,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     {
                         try
                         {
-                            if (userUsage.Item != null)
+                            if (userUsage.Item!.IsUserInRoom())
                             {
                                 // the user was joined to the room, so we can run the standard leaveRoom method.
                                 // this will handle closing the room if this was the only user.
@@ -182,7 +203,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         finally
                         {
                             // no matter how we end up cleaning up the room, ensure the user's context is destroyed.
-                            userUsage.Destroy();
+                            userUsage.Item!.MakeUserLeaveRoom();
                         }
 
                         throw;
@@ -236,7 +257,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 if (databaseRoom.type != database_match_type.matchmaking && databaseRoom.host_id != Context.GetUserId())
                     throw new InvalidOperationException("Non-host is attempting to join match before host");
 
-                var room = new ServerMultiplayerRoom(roomId, HubContext, databaseFactory)
+                var room = new ServerMultiplayerRoom(roomId, HubContext, databaseFactory, manager)
                 {
                     ChannelID = databaseRoom.channel_id,
                     Settings = new MultiplayerRoomSettings
@@ -284,7 +305,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 }
                 finally
                 {
-                    userUsage.Destroy();
+                    userUsage.Item!.MakeUserLeaveRoom();
                 }
             }
 
@@ -399,7 +420,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     }
                     finally
                     {
-                        targetUserUsage.Destroy();
+                        targetUserUsage.Item!.MakeUserLeaveRoom();
                     }
                 }
             }
@@ -653,6 +674,25 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 if (user == null)
                     throw new InvalidOperationException("Local user was not found in the expected room");
 
+                using (var db = databaseFactory.GetInstance())
+                {
+                    foreach (var roomUser in room.Users.Where(u => u.UserID != Context.GetUserId()))
+                    {
+                        using (var usage = await GetStateFromUser(roomUser.UserID))
+                        {
+                            var result = await item.ValidateRuleset(manager, usage.Item!.RulesetHashes);
+
+                            if (result == null)
+                            {
+                                continue;
+                            }
+
+                            string? username = await db.GetUsernameAsync(roomUser.UserID);
+                            throw new InvalidStateException($"User {username ?? "unknown"} has non-existent or outdated rulesets: (name: {result.Item1}, server-ver: {result.Item2})");
+                        }
+                    }
+                }
+
                 Log(room, $"Adding playlist item for beatmap {item.BeatmapID}");
                 await room.Controller.AddPlaylistItem(item, user);
 
@@ -672,6 +712,25 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 var user = room.Users.FirstOrDefault(u => u.UserID == Context.GetUserId());
                 if (user == null)
                     throw new InvalidOperationException("Local user was not found in the expected room");
+
+                using (var db = databaseFactory.GetInstance())
+                {
+                    foreach (var roomUser in room.Users.Where(u => u.UserID != Context.GetUserId()))
+                    {
+                        using (var usage = await GetStateFromUser(roomUser.UserID))
+                        {
+                            var result = await item.ValidateRuleset(manager, usage.Item!.RulesetHashes);
+
+                            if (result == null)
+                            {
+                                continue;
+                            }
+
+                            string? username = await db.GetUsernameAsync(roomUser.UserID);
+                            throw new InvalidStateException($"User {username ?? "unknown"} has non-existent or outdated rulesets: (name: {result.Item1}, server-ver: {result.Item2})");
+                        }
+                    }
+                }
 
                 Log(room, $"Editing playlist item {item.ID} for beatmap {item.BeatmapID}");
                 await room.Controller.EditPlaylistItem(item, user);
@@ -912,12 +971,19 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 throw new NotJoinedRoomException();
 
             long roomId = state.CurrentRoomID;
+            if (roomId == -1)
+                throw new NotJoinedRoomException();
 
             return await Rooms.GetForUse(roomId);
         }
 
         private async Task leaveRoom(MultiplayerClientState state, bool wasKick)
         {
+            if (!state.IsUserInRoom())
+            {
+                return;
+            }
+
             using (var roomUsage = await getLocalUserRoom(state))
                 await leaveRoom(state, roomUsage, wasKick);
         }
@@ -981,6 +1047,28 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
             else
                 await Clients.Group(GetGroupId(room.RoomID)).UserLeft(user);
+        }
+
+        public override async Task OnConnectedAsync()
+        {
+            Dictionary<string, string> rulesetHashes = new Dictionary<string, string>();
+
+            using (var usage = await GetOrCreateLocalUserState())
+            {
+                if (Context.GetHttpContext()?.Request.Headers.TryGetValue(ruleset_hash_header, out StringValues headerValue) == true)
+                {
+                    Dictionary<string, string>? parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(headerValue.ToString());
+
+                    if (parsed != null)
+                    {
+                        rulesetHashes = parsed;
+                    }
+                }
+
+                Log("Connected with ruleset hashes: " + string.Join(", ", rulesetHashes.Select(kvp => $"{kvp.Key}: {kvp.Value}")));
+
+                usage.Item = new MultiplayerClientState(Context.ConnectionId, Context.GetUserId(), rulesetHashes: rulesetHashes);
+            }
         }
 
         internal Task<ItemUsage<ServerMultiplayerRoom>> GetRoom(long roomId) => Rooms.GetForUse(roomId);

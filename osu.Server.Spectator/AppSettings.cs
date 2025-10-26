@@ -49,6 +49,14 @@ namespace osu.Server.Spectator
 
         #endregion
 
+        #region Custom rulesets
+
+        public static string RulesetsPath { get; }
+
+        public static bool CheckRulesetVersion { get; set; }
+
+        #endregion
+
         public static int BanchoBotUserId { get; }
 
         public static int MatchmakingRoomSize { get; set; }
@@ -133,6 +141,9 @@ namespace osu.Server.Spectator
                 ? mmRatingRadiusIncreaseTime
                 : MatchmakingRatingRadiusIncreaseTime;
             MatchmakingPoolSize = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_POOL_SIZE"), out int mmPoolSize) ? mmPoolSize : MatchmakingPoolSize;
+
+            RulesetsPath = Environment.GetEnvironmentVariable("RULESETS_PATH") ?? "rulesets";
+            CheckRulesetVersion = (Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION") is not string env || !bool.TryParse(env, out bool v)) || v;
         }
     }
 }
