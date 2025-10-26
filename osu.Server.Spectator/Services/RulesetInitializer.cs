@@ -21,5 +21,4 @@ namespace osu.Server.Spectator.Services
             return Task.CompletedTask;
         }
     }
-
 }

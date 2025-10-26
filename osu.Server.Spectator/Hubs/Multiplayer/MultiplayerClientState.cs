@@ -3,19 +3,36 @@
 
 using System;
 using Newtonsoft.Json;
+using System.Collections.Generic;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
     [Serializable]
     public class MultiplayerClientState : ClientState
     {
-        public readonly long CurrentRoomID;
+        public long CurrentRoomID;
+
+        public Dictionary<string, string> RulesetHashes;
+
+        public void MakeUserLeaveRoom()
+        {
+            CurrentRoomID = -1;
+        }
+
+        public bool IsUserInRoom(long? roomId = null)
+        {
+            if (roomId.HasValue)
+                return CurrentRoomID == roomId.Value;
+
+            return CurrentRoomID != -1;
+        }
 
         [JsonConstructor]
-        public MultiplayerClientState(in string connectionId, in int userId, in long currentRoomID)
+        public MultiplayerClientState(in string connectionId, in int userId, in long currentRoomID = -1, in Dictionary<string, string>? rulesetHashes = null)
             : base(connectionId, userId)
         {
             CurrentRoomID = currentRoomID;
+            RulesetHashes = rulesetHashes ?? new Dictionary<string, string>();
         }
     }
 }

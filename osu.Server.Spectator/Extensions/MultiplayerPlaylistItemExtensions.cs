@@ -6,9 +6,11 @@ using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Game.Utils;
 using osu.Server.Spectator.Services;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace osu.Server.Spectator.Extensions
 {
@@ -94,6 +96,60 @@ namespace osu.Server.Spectator.Extensions
                 if (!ModUtils.CheckCompatibleSet(requiredMods.Concat(new[] { allowedMod }), out invalid))
                     throw new InvalidStateException($"Invalid combination of required and allowed mods: {string.Join(',', invalid.Select(m => m.Acronym))}");
             }
+        }
+
+        public static async Task<Tuple<string, string>?> ValidateRuleset(this MultiplayerPlaylistItem item, RulesetManager manager, Dictionary<string, string> clientHashes)
+        {
+            if (!AppSettings.CheckRulesetVersion)
+            {
+                return null;
+            }
+
+            var ruleset = manager.GetRuleset(item.RulesetID);
+            var clientHash = clientHashes.GetValueOrDefault(ruleset.ShortName);
+
+            if (ruleset.IsOfficial())
+                return null;
+
+            var latestVersion = await manager.ValidateRulesetHash(ruleset, clientHash ?? string.Empty);
+
+            if (!string.IsNullOrEmpty(latestVersion))
+            {
+                return Tuple.Create(ruleset.ShortName, latestVersion);
+            }
+
+            return null;
+        }
+
+        public static async Task<List<Tuple<string, string>>> ValidateRulesets(this IEnumerable<MultiplayerPlaylistItem> items, RulesetManager manager, Dictionary<string, string> clientHashes)
+        {
+            List<Tuple<string, string>> invalidRulesets = new List<Tuple<string, string>>();
+
+            if (!AppSettings.CheckRulesetVersion)
+            {
+                return invalidRulesets;
+            }
+
+            foreach (var item in items)
+            {
+                var ruleset = manager.GetRuleset(item.RulesetID);
+
+                if (ruleset.IsOfficial())
+                {
+                    continue;
+                }
+
+                var clientHash = clientHashes.GetValueOrDefault(ruleset.ShortName);
+
+                var latestVersion = await manager.ValidateRulesetHash(ruleset, clientHash ?? string.Empty);
+
+                if (!string.IsNullOrEmpty(latestVersion))
+                {
+                    invalidRulesets.Add(Tuple.Create(ruleset.ShortName, latestVersion));
+                }
+            }
+
+            return invalidRulesets;
         }
     }
 }
