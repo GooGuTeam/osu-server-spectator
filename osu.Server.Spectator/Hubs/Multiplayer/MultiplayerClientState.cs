@@ -2,7 +2,9 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Threading;
 using Newtonsoft.Json;
+using StatsdClient;
 using System.Collections.Generic;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
@@ -10,22 +12,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
     [Serializable]
     public class MultiplayerClientState : ClientState
     {
-        public long CurrentRoomID;
+        public long? CurrentRoomID;
 
         public Dictionary<string, string> RulesetHashes;
 
-        public void MakeUserLeaveRoom()
-        {
-            CurrentRoomID = -1;
-        }
-
-        public bool IsUserInRoom(long? roomId = null)
-        {
-            if (roomId.HasValue)
-                return CurrentRoomID == roomId.Value;
-
-            return CurrentRoomID != -1;
-        }
+        private static int countUsersInRooms;
 
         [JsonConstructor]
         public MultiplayerClientState(in string connectionId, in int userId, in long currentRoomID = -1, in Dictionary<string, string>? rulesetHashes = null)
@@ -33,6 +24,24 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             CurrentRoomID = currentRoomID;
             RulesetHashes = rulesetHashes ?? new Dictionary<string, string>();
+        }
+
+        public void SetRoom(long roomId)
+        {
+            if (CurrentRoomID != null)
+                throw new InvalidOperationException("User is already in a room.");
+
+            CurrentRoomID = roomId;
+            DogStatsd.Gauge($"{MultiplayerHub.STATSD_PREFIX}.users", Interlocked.Increment(ref countUsersInRooms));
+        }
+
+        public void ClearRoom()
+        {
+            if (CurrentRoomID == null)
+                return;
+
+            CurrentRoomID = -1;
+            DogStatsd.Gauge($"{MultiplayerHub.STATSD_PREFIX}.users", Interlocked.Decrement(ref countUsersInRooms));
         }
     }
 }

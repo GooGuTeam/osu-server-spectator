@@ -8,7 +8,7 @@ namespace osu.Server.Spectator
     public static class AppSettings
     {
         public static bool SaveReplays { get; set; }
-        public static int ReplayUploaderConcurrency { get; set; }
+        public static int ReplayUploaderConcurrency { get; set; } = 1;
 
         #region Sync With g0v0-server
 
@@ -24,28 +24,28 @@ namespace osu.Server.Spectator
 
         public static bool TrackBuildUserCounts { get; set; }
 
-        public static string ServerPort { get; set; }
-        public static string RedisHost { get; }
-        public static string DataDogAgentHost { get; set; }
+        public static int ServerPort { get; set; } = 8086;
+        public static string RedisHost { get; } = "localhost";
+        public static string DataDogAgentHost { get; set; } = "localhost";
 
-        public static string DatabaseHost { get; }
-        public static string DatabaseUser { get; }
-        public static string DatabasePassword { get; }
-        public static string DatabaseName { get; }
-        public static string DatabasePort { get; }
+        public static string DatabaseHost { get; } = "localhost";
+        public static string DatabaseUser { get; } = "osu_api";
+        public static string DatabasePassword { get; } = "passsword";
+        public static string DatabaseName { get; } = "osu_api";
+        public static int DatabasePort { get; } = 3306;
 
-        public static string SharedInteropDomain { get; }
-        public static string SharedInteropSecret { get; }
+        public static string SharedInteropDomain { get; } = "http://localhost:8000";
+        public static string SharedInteropSecret { get; } = string.Empty;
 
         public static string? SentryDsn { get; }
 
         #region JWT Authentication Settings
 
-        public static string JwtSecretKey { get; }
-        public static string JwtAlgorithm { get; }
-        public static int JwtAccessTokenExpireMinutes { get; }
-        public static int OsuClientId { get; }
-        public static bool UseLegacyRsaAuth { get; }
+        public static string JwtSecretKey { get; } = "your_jwt_secret_here";
+        public static string JwtAlgorithm { get; } = "HS256";
+        public static int JwtAccessTokenExpireMinutes { get; } = 1440;
+        public static int OsuClientId { get; } = 5;
+        public static bool UseLegacyRsaAuth { get; } = true;
 
         #endregion
 
@@ -57,29 +57,19 @@ namespace osu.Server.Spectator
 
         #endregion
 
-        public static int BanchoBotUserId { get; }
+        // app.const
+        // BANCHOBOT_ID = 2
+        public static int BanchoBotUserId { get; } = 2;
 
-        public static int MatchmakingRoomSize { get; set; }
-        public static int MatchmakingRoomRounds { get; set; }
+        public static int MatchmakingRoomRounds { get; set; } = 5;
         public static bool MatchmakingRoomAllowSkip { get; set; }
-        public static TimeSpan MatchmakingLobbyUpdateRate { get; }
-        public static TimeSpan MatchmakingQueueUpdateRate { get; }
+        public static TimeSpan MatchmakingLobbyUpdateRate { get; } = TimeSpan.FromSeconds(5);
+        public static TimeSpan MatchmakingQueueUpdateRate { get; } = TimeSpan.FromSeconds(1);
 
         /// <summary>
-        /// The initial rating search radius.
+        /// The duration for which users are temporarily banned from the matchmaking queue after declining an invitation.
         /// </summary>
-        /// <remarks>
-        /// Defaults to 20.
-        /// </remarks>
-        public static double MatchmakingRatingInitialRadius { get; } = 20;
-
-        /// <summary>
-        /// The amount of time (in seconds) before each doubling of the rating search radius.
-        /// </summary>
-        /// <remarks>
-        /// Defaults to doubling every 15 seconds. After 90 seconds it will cover all possible users.
-        /// </remarks>
-        public static double MatchmakingRatingRadiusIncreaseTime { get; } = 15;
+        public static TimeSpan MatchmakingQueueBanDuration { get; } = TimeSpan.FromMinutes(1);
 
         /// <summary>
         /// The total number of beatmaps per matchmaking room.
@@ -88,62 +78,72 @@ namespace osu.Server.Spectator
 
         static AppSettings()
         {
-            SaveReplays = Environment.GetEnvironmentVariable("SAVE_REPLAYS") == "1";
-            ReplayUploaderConcurrency = int.Parse(Environment.GetEnvironmentVariable("REPLAY_UPLOAD_THREADS") ?? "1");
+            SaveReplays = bool.TryParse(Environment.GetEnvironmentVariable("SAVE_REPLAYS"), out bool saveReplays) ? saveReplays : SaveReplays;
+            ReplayUploaderConcurrency = int.TryParse(Environment.GetEnvironmentVariable("REPLAY_UPLOAD_THREADS"), out int uploaderConcurrency) ? uploaderConcurrency : ReplayUploaderConcurrency;
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ReplayUploaderConcurrency);
 
-            EnableAllBeatmapLeaderboard = Environment.GetEnvironmentVariable("ENABLE_ALL_BEATMAP_LEADERBOARD") == "true";
-            EnableAP = (Environment.GetEnvironmentVariable("ENABLE_AP") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_AP")) == "true";
-            EnableRX = (Environment.GetEnvironmentVariable("ENABLE_RX") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_RX")) == "true";
+            EnableAllBeatmapLeaderboard = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_ALL_BEATMAP_LEADERBOARD"), out bool enableAllBeatmapLeaderboard)
+                ? enableAllBeatmapLeaderboard
+                : EnableAllBeatmapLeaderboard;
+            EnableAP = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_AP") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_AP"), out bool enableAP) ? enableAP : EnableAP;
+            EnableRX = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_RX") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_RX"), out bool enableRX) ? enableRX : EnableRX;
 
-            TrackBuildUserCounts = Environment.GetEnvironmentVariable("TRACK_BUILD_USER_COUNTS") == "1";
+            TrackBuildUserCounts = bool.TryParse(Environment.GetEnvironmentVariable("TRACK_BUILD_USER_COUNTS"), out bool trackBuildUserCounts) ? trackBuildUserCounts : TrackBuildUserCounts;
 
-            ServerPort = Environment.GetEnvironmentVariable("SERVER_PORT") ?? "8086";
-            RedisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "localhost";
-            DataDogAgentHost = Environment.GetEnvironmentVariable("DD_AGENT_HOST") ?? "localhost";
+            ServerPort = int.TryParse(Environment.GetEnvironmentVariable("SERVER_PORT"), out int serverPort) ? serverPort : ServerPort;
+            RedisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? RedisHost;
+            DataDogAgentHost = Environment.GetEnvironmentVariable("DD_AGENT_HOST") ?? DataDogAgentHost;
 
-            DatabaseHost = Environment.GetEnvironmentVariable("MYSQL_HOST") ?? Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost";
-            DatabaseUser = Environment.GetEnvironmentVariable("MYSQL_USER") ?? Environment.GetEnvironmentVariable("DB_USER") ?? "osu_api";
-            DatabasePassword = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "osu_password";
-            DatabaseName = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? Environment.GetEnvironmentVariable("DB_NAME") ?? "osu_api";
-            DatabasePort = Environment.GetEnvironmentVariable("MYSQL_PORT") ?? Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
+            DatabaseHost = Environment.GetEnvironmentVariable("MYSQL_HOST") ?? DatabaseHost;
+            DatabaseUser = Environment.GetEnvironmentVariable("MYSQL_USER") ?? DatabaseUser;
+            DatabasePort = int.TryParse(Environment.GetEnvironmentVariable("MYSQL_PORT"), out int databasePort) ? databasePort : DatabasePort;
+            DatabasePassword = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? DatabasePassword;
+            DatabaseName = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? DatabaseName;
 
-            SharedInteropDomain = Environment.GetEnvironmentVariable("SHARED_INTEROP_DOMAIN") ?? "http://localhost:8000";
-            SharedInteropSecret = Environment.GetEnvironmentVariable("SHARED_INTEROP_SECRET") ?? string.Empty;
+            SharedInteropDomain = Environment.GetEnvironmentVariable("SHARED_INTEROP_DOMAIN") ?? SharedInteropDomain;
+            SharedInteropSecret = Environment.GetEnvironmentVariable("SHARED_INTEROP_SECRET") ?? SharedInteropSecret;
 
             SentryDsn = Environment.GetEnvironmentVariable("SP_SENTRY_DSN") ?? null;
 
             // JWT Authentication Settings
-            JwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? "your_jwt_secret_here";
-            JwtAlgorithm = Environment.GetEnvironmentVariable("JWT_ALGORITHM") ?? "HS256";
-            JwtAccessTokenExpireMinutes = int.Parse(Environment.GetEnvironmentVariable("JWT_ACCESS_TOKEN_EXPIRE_MINUTES") ?? "1440");
-            OsuClientId = int.Parse(Environment.GetEnvironmentVariable("OSU_CLIENT_ID") ?? "5");
-            UseLegacyRsaAuth = Environment.GetEnvironmentVariable("USE_LEGACY_RSA_AUTH") == "1";
-            SentryDsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
+            JwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? JwtSecretKey;
+            JwtAlgorithm = Environment.GetEnvironmentVariable("JWT_ALGORITHM") ?? JwtAlgorithm;
+            JwtAccessTokenExpireMinutes = int.TryParse(Environment.GetEnvironmentVariable("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"), out int jwtExpireMinutes)
+                ? jwtExpireMinutes
+                : JwtAccessTokenExpireMinutes;
+            OsuClientId = int.TryParse(Environment.GetEnvironmentVariable("OSU_CLIENT_ID"), out int osuClientId) ? osuClientId : OsuClientId;
+            UseLegacyRsaAuth = Environment.GetEnvironmentVariable("USE_LEGACY_RSA_AUTH") is not string useLegacyRsaAuth || !bool.TryParse(useLegacyRsaAuth, out bool isUseLegacyRsaAuth)
+                                                                                                                        || isUseLegacyRsaAuth;
 
-            // app.const
-            // BANCHOBOT_ID = 2
-            BanchoBotUserId = int.TryParse(Environment.GetEnvironmentVariable("BANCHO_BOT_USER_ID"), out int id) ? id : 2;
+            BanchoBotUserId = int.TryParse(Environment.GetEnvironmentVariable("BANCHO_BOT_USER_ID"), out int banchoBotUserId) ? banchoBotUserId : BanchoBotUserId;
 
-            MatchmakingRoomSize = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ROOM_SIZE"), out int mmSize) ? mmSize : 8;
-            MatchmakingRoomRounds = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ROOM_ROUNDS"), out int mmRounds) ? mmRounds : 5;
-            MatchmakingRoomAllowSkip = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ALLOW_SKIP"), out bool mmAllowSkip) && mmAllowSkip;
+            MatchmakingRoomRounds = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ROOM_ROUNDS"), out int mmRounds)
+                ? mmRounds
+                : MatchmakingRoomRounds;
+
+            MatchmakingRoomAllowSkip = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ALLOW_SKIP"), out bool mmAllowSkip)
+                ? mmAllowSkip
+                : MatchmakingRoomAllowSkip;
+
             MatchmakingLobbyUpdateRate = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_LOBBY_UPDATE_RATE"), out int mmLobbyUpdateRate)
                 ? TimeSpan.FromSeconds(mmLobbyUpdateRate)
-                : TimeSpan.FromSeconds(5);
+                : MatchmakingLobbyUpdateRate;
+
             MatchmakingQueueUpdateRate = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_QUEUE_UPDATE_RATE"), out int mmQueueUpdateRate)
                 ? TimeSpan.FromSeconds(mmQueueUpdateRate)
-                : TimeSpan.FromSeconds(1);
-            MatchmakingRatingInitialRadius = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_RATING_INITIAL_RADIUS"), out int mmRatingInitialRadius)
-                ? mmRatingInitialRadius
-                : MatchmakingRatingInitialRadius;
-            MatchmakingRatingRadiusIncreaseTime = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_RATING_RADIUS_INCREASE_TIME"), out int mmRatingRadiusIncreaseTime)
-                ? mmRatingRadiusIncreaseTime
-                : MatchmakingRatingRadiusIncreaseTime;
-            MatchmakingPoolSize = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_POOL_SIZE"), out int mmPoolSize) ? mmPoolSize : MatchmakingPoolSize;
+                : MatchmakingQueueUpdateRate;
+
+            MatchmakingQueueBanDuration = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_QUEUE_BAN_DURATION"), out int mmQueueBanDuration)
+                ? TimeSpan.FromSeconds(mmQueueBanDuration)
+                : MatchmakingQueueBanDuration;
+
+            MatchmakingPoolSize = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_POOL_SIZE"), out int mmPoolSize)
+                ? mmPoolSize
+                : MatchmakingPoolSize;
 
             RulesetsPath = Environment.GetEnvironmentVariable("RULESETS_PATH") ?? "rulesets";
-            CheckRulesetVersion = (Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION") is not string env || !bool.TryParse(env, out bool v)) || v;
+            CheckRulesetVersion = Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION") is not string checkRuleset || !bool.TryParse(checkRuleset, out bool isCheckRulesetVersion)
+                                                                                                                         || isCheckRulesetVersion;
         }
     }
 }

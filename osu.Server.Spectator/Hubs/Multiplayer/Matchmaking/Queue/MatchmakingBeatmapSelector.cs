@@ -15,12 +15,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
     {
         public int PoolSize { get; set; } = AppSettings.MatchmakingPoolSize;
 
-        private readonly matchmaking_pool pool;
         private readonly matchmaking_pool_beatmap[] beatmaps;
 
-        public MatchmakingBeatmapSelector(matchmaking_pool pool, matchmaking_pool_beatmap[] beatmaps)
+        public MatchmakingBeatmapSelector(matchmaking_pool_beatmap[] beatmaps)
         {
-            this.pool = pool;
             this.beatmaps = beatmaps;
         }
 
@@ -32,7 +30,16 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         public static async Task<MatchmakingBeatmapSelector> Initialise(matchmaking_pool pool, IDatabaseFactory dbFactory)
         {
             using var db = dbFactory.GetInstance();
-            return new MatchmakingBeatmapSelector(pool, await db.GetMatchmakingPoolBeatmapsAsync(pool.id));
+
+            matchmaking_pool_beatmap[] beatmaps = await db.GetMatchmakingPoolBeatmapsAsync(pool.id);
+
+            foreach (var b in beatmaps)
+            {
+                // Todo: This default rating is only accurate for NoMod beatmaps.
+                b.rating ??= (int)Math.Round(800 + (150 * b.difficulty_rating));
+            }
+
+            return new MatchmakingBeatmapSelector(beatmaps);
         }
 
         /// <summary>
@@ -41,22 +48,20 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         /// <param name="ratings">The lobby user ratings.</param>
         public matchmaking_pool_beatmap[] GetAppropriateBeatmaps(EloRating[] ratings)
         {
-            double muMin = ratings.Min(r => r.Mu);
-            double muMax = ratings.Max(r => r.Mu);
-            double muAvg = ratings.Sum(r => r.Mu) / ratings.Length;
-            // 80 is a sane value that ensures the window expands. It is equal to EloSystem.SigLimit.
-            double sigAvg = Math.Max(80, Math.Sqrt(ratings.Sum(r => Math.Pow(r.Sig, 2))) / ratings.Length);
+            double muAvg = ratings.Average(r => r.Mu);
+            // 80 is a sane non-zero default value. It is equal to EloSystem.SigLimit.
+            double muSig = Math.Max(80, Math.Sqrt(ratings.Average(v => Math.Pow(v.Mu - muAvg, 2))));
 
             List<matchmaking_pool_beatmap> result = [];
 
             // 25% of beatmaps will be easy for the lobby.
-            result.AddRange(collectBeatmaps(beatmaps.Where(b => b.rating <= muMin), PoolSize / 4, muAvg, sigAvg));
+            result.AddRange(collectBeatmaps(beatmaps, PoolSize / 4, muAvg - muSig, muSig));
 
             // 25% of beatmaps will be hard for the lobby.
-            result.AddRange(collectBeatmaps(beatmaps.Where(b => b.rating >= muMax).Except(result), PoolSize / 4, muAvg, sigAvg));
+            result.AddRange(collectBeatmaps(beatmaps.Except(result), PoolSize / 4, muAvg + muSig, muSig));
 
             // The rest will be of average difficulty.
-            result.AddRange(collectBeatmaps(beatmaps.Except(result), PoolSize - result.Count, muAvg, sigAvg));
+            result.AddRange(collectBeatmaps(beatmaps.Except(result), PoolSize - result.Count, muAvg, muSig));
 
             return result.ToArray();
         }
@@ -96,7 +101,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 {
                     double windowSig = ratingSig * (iteration + 1);
 
-                    matchmaking_pool_beatmap[] windowItems = available.Where(b => Math.Abs(b.rating - ratingMu) <= windowSig).ToArray();
+                    matchmaking_pool_beatmap[] windowItems = available.Where(b => Math.Abs((b.rating ?? 1500) - ratingMu) <= windowSig).ToArray();
                     Random.Shared.Shuffle(windowItems);
 
                     foreach (matchmaking_pool_beatmap item in windowItems.Take(itemsToAdd))

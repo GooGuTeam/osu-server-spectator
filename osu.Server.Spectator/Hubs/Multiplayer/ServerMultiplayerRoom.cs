@@ -14,6 +14,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
@@ -31,7 +32,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private IMatchController? matchController;
         private readonly RulesetManager manager;
 
-        public ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
+        private ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
             : base(roomId)
         {
             this.hub = hub;
@@ -39,15 +40,57 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             this.manager = manager;
         }
 
-        public async Task Initialise()
+        /// <summary>
+        /// Attempt to retrieve and construct a room from the database backend, based on a room ID specification.
+        /// This will check the database backing to ensure things are in a consistent state.
+        /// This will also mark the room as active, indicating that this server is now in control of the room's lifetime.
+        /// </summary>
+        /// <param name="roomId">The room identifier.</param>
+        /// <param name="hub">The multiplayer hub context.</param>
+        /// <param name="dbFactory">The database factory.</param>
+        /// <param name="manager">The ruleset manager.</param>
+        /// <exception cref="InvalidOperationException">If the room does not exist in the database.</exception>
+        /// <exception cref="InvalidStateException">If the match has already ended.</exception>
+        public static async Task<ServerMultiplayerRoom> InitialiseAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
         {
+            ServerMultiplayerRoom room = new ServerMultiplayerRoom(roomId, hub, dbFactory, manager);
+
+            // TODO: this call should be transactional, and mark the room as managed by this server instance.
+            // This will allow for other instances to know not to reinitialise the room if the host arrives there.
+            // Alternatively, we can move lobby retrieval away from osu-web and not require this in the first place.
+            // Needs further discussion and consideration either way.
             using (var db = dbFactory.GetInstance())
             {
-                foreach (var item in await db.GetAllPlaylistItemsAsync(RoomID))
-                    Playlist.Add(item.ToMultiplayerPlaylistItem());
+                hub.Log(room, null, $"Retrieving room {roomId} from database");
+                var databaseRoom = await db.GetRealtimeRoomAsync(roomId);
+
+                if (databaseRoom == null)
+                    throw new InvalidOperationException("Specified match does not exist.");
+
+                if (databaseRoom.ends_at != null && databaseRoom.ends_at < DateTimeOffset.Now)
+                    throw new InvalidStateException("Match has already ended.");
+
+                room.ChannelID = databaseRoom.channel_id;
+                room.Settings = new MultiplayerRoomSettings
+                {
+                    Name = databaseRoom.name,
+                    Password = databaseRoom.password,
+                    MatchType = databaseRoom.type.ToMatchType(),
+                    QueueMode = databaseRoom.queue_mode.ToQueueMode(),
+                    AutoStartDuration = TimeSpan.FromSeconds(databaseRoom.auto_start_duration),
+                    AutoSkip = databaseRoom.auto_skip
+                };
+
+                foreach (var item in await db.GetAllPlaylistItemsAsync(roomId))
+                    room.Playlist.Add(item.ToMultiplayerPlaylistItem());
+
+                await room.ChangeMatchType(room.Settings.MatchType);
+
+                hub.Log(room, null, "Marking room active");
+                await db.MarkRoomActiveAsync(room);
             }
 
-            await ChangeMatchType(Settings.MatchType);
+            return room;
         }
 
         /// <summary>
@@ -103,6 +146,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             Users.Remove(user);
             await Controller.HandleUserLeft(user);
+            await hub.CheckVotesToSkipPassed(this);
         }
 
         #region Countdowns
@@ -241,6 +285,21 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <returns>The countdown matching the given ID, or null if no such countdown is running.</returns>
         public MultiplayerCountdown? FindCountdownById(int countdownId)
             => ActiveCountdowns.SingleOrDefault(c => c.ID == countdownId);
+
+        /// <summary>
+        /// Retrieves the remaining time for a countdown.
+        /// </summary>
+        /// <param name="countdown">The countdown.</param>
+        /// <returns>The remaining time.</returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public TimeSpan GetCountdownRemainingTime(MultiplayerCountdown? countdown)
+        {
+            if (countdown == null || !trackedCountdowns.TryGetValue(countdown, out CountdownInfo? countdownInfo))
+                return TimeSpan.Zero;
+
+            TimeSpan elapsed = DateTimeOffset.Now - countdownInfo.StartTime;
+            return elapsed >= countdownInfo.Duration ? TimeSpan.Zero : countdownInfo.Duration - elapsed;
+        }
 
         private class CountdownInfo : IDisposable
         {

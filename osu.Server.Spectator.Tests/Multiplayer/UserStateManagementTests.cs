@@ -121,10 +121,14 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             await MarkCurrentUserReadyAndAvailable();
             await Hub.StartMatch();
 
+            long playlistItemId;
+
             using (var room = await Rooms.GetForUse(ROOM_ID))
             {
                 Assert.NotNull(room.Item);
                 Assert.Equal(MultiplayerRoomState.WaitingForLoad, room.Item.State);
+
+                playlistItemId = room.Item.CurrentPlaylistItem.ID;
             }
 
             SetUserContext(ContextUser);
@@ -147,8 +151,10 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             }
 
             Database.Verify(db => db.MarkPlaylistItemAsPlayedAsync(ROOM_ID, It.IsAny<long>()), Times.Once);
-            Database.Verify(db => db.LogRoomEventAsync(It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_aborted")), Times.Once);
-            Database.Verify(db => db.LogRoomEventAsync(It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_completed")), Times.Never);
+            Database.Verify(db => db.LogRoomEventAsync(
+                It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_aborted" && ev.playlist_item_id == playlistItemId)), Times.Once);
+            Database.Verify(db => db.LogRoomEventAsync(
+                It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_completed")), Times.Never);
         }
 
         [Fact]
@@ -165,10 +171,14 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             await MarkCurrentUserReadyAndAvailable();
             await Hub.StartMatch();
 
+            long playlistItemId;
+
             using (var room = await Rooms.GetForUse(ROOM_ID))
             {
                 Assert.NotNull(room.Item);
                 Assert.Equal(MultiplayerRoomState.WaitingForLoad, room.Item.State);
+
+                playlistItemId = room.Item.CurrentPlaylistItem.ID;
             }
 
             SetUserContext(ContextUser2);
@@ -185,9 +195,12 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             }
 
             Database.Verify(db => db.MarkPlaylistItemAsPlayedAsync(ROOM_ID, It.IsAny<long>()), Times.Once);
-            Database.Verify(db => db.LogRoomEventAsync(It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_started")), Times.Once);
-            Database.Verify(db => db.LogRoomEventAsync(It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_aborted")), Times.Once);
-            Database.Verify(db => db.LogRoomEventAsync(It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_completed")), Times.Never);
+            Database.Verify(db => db.LogRoomEventAsync(
+                It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_started" && ev.playlist_item_id == playlistItemId)), Times.Once);
+            Database.Verify(db => db.LogRoomEventAsync(
+                It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_aborted" && ev.playlist_item_id == playlistItemId)), Times.Once);
+            Database.Verify(db => db.LogRoomEventAsync(
+                It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_completed")), Times.Never);
         }
 
         [Fact]

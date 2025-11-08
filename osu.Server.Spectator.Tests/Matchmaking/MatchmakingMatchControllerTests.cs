@@ -1,25 +1,25 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Moq;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
 using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking;
+using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Tests.Multiplayer;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Xunit;
 
 namespace osu.Server.Spectator.Tests.Matchmaking
 {
-    public class MatchmakingMatchControllerTests : MultiplayerTest
+    public class MatchmakingMatchControllerTests : MultiplayerTest, IAsyncLifetime
     {
         public MatchmakingMatchControllerTests()
         {
-            AppSettings.MatchmakingRoomSize = 2;
             AppSettings.MatchmakingRoomRounds = 2;
             AppSettings.MatchmakingRoomAllowSkip = true;
 
@@ -38,6 +38,12 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                         user_id = (uint)userId,
                         ruleset_id = (ushort)rulesetId
                     }));
+        }
+
+        public async Task InitializeAsync()
+        {
+            using (var room = await Rooms.GetForUse(ROOM_ID, true))
+                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, [USER_ID, USER_ID_2]);
         }
 
         [Fact]
@@ -59,6 +65,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
 
             // Join the first user.
             await Hub.JoinRoom(ROOM_ID);
+            Assert.Null(Rooms.GetEntityUnsafe(ROOM_ID)!.Host);
 
             // Check that the room is waiting for users.
             await verifyStage(MatchmakingStage.WaitingForClientsJoin);
@@ -70,6 +77,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             // Join the second user.
             SetUserContext(ContextUser2);
             await Hub.JoinRoom(ROOM_ID);
+            Assert.Null(Rooms.GetEntityUnsafe(ROOM_ID)!.Host);
 
             for (int i = 1; i <= 2; i++)
             {
@@ -87,7 +95,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                 // Select a beatmap for both users.
                 long[] selectedPlaylistItems;
                 using (var room = await Rooms.GetForUse(ROOM_ID))
-                    selectedPlaylistItems = room.Item!.Playlist.Where(item => !item.Expired).Take(2).Select(item => item.ID).ToArray();
+                    selectedPlaylistItems = room.Item!.Playlist.Where(item => !item.Expired).Skip(3).Take(2).Select(item => item.ID).ToArray();
                 SetUserContext(ContextUser);
                 await Hub.MatchmakingToggleSelection(selectedPlaylistItems[0]);
                 SetUserContext(ContextUser2);
@@ -116,6 +124,10 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                 await gotoNextStage();
                 await verifyStage(MatchmakingStage.Gameplay);
 
+                long playlistItemId;
+                using (var room = await Rooms.GetForUse(ROOM_ID))
+                    playlistItemId = room.Item!.CurrentPlaylistItem.ID;
+
                 // Check that a request to load gameplay was started.
                 Receiver.Verify(u => u.LoadRequested(), Times.Once);
 
@@ -127,11 +139,17 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                 await Hub.ChangeState(MultiplayerUserState.Loaded);
                 await Hub.ChangeState(MultiplayerUserState.ReadyForGameplay);
 
+                Database.Verify(db => db.LogRoomEventAsync(
+                    It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_started" && ev.playlist_item_id == playlistItemId)), Times.Once);
+
                 // End gameplay for both users
                 SetUserContext(ContextUser);
                 await Hub.AbortGameplay();
                 SetUserContext(ContextUser2);
                 await Hub.AbortGameplay();
+
+                Database.Verify(db => db.LogRoomEventAsync(
+                    It.Is<multiplayer_realtime_room_event>(ev => ev.event_type == "game_aborted" && ev.playlist_item_id == playlistItemId)), Times.Once);
 
                 // Check that the room continued to show the results after gameplay.
                 await verifyStage(MatchmakingStage.ResultsDisplaying);
@@ -139,11 +157,11 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                 // Check that the standings were updated.
                 using (var room = await Rooms.GetForUse(ROOM_ID))
                 {
-                    Assert.Equal(15 * i, ((MatchmakingRoomState)room.Item!.MatchState!).Users[USER_ID].Points);
-                    Assert.Equal(1, ((MatchmakingRoomState)room.Item!.MatchState!).Users[USER_ID].Placement);
+                    Assert.Equal(15 * i, ((MatchmakingRoomState)room.Item!.MatchState!).Users.GetOrAdd(USER_ID).Points);
+                    Assert.Equal(1, ((MatchmakingRoomState)room.Item!.MatchState!).Users.GetOrAdd(USER_ID).Placement);
 
-                    Assert.Equal(12 * i, ((MatchmakingRoomState)room.Item!.MatchState!).Users[USER_ID_2].Points);
-                    Assert.Equal(2, ((MatchmakingRoomState)room.Item!.MatchState!).Users[USER_ID_2].Placement);
+                    Assert.Equal(12 * i, ((MatchmakingRoomState)room.Item!.MatchState!).Users.GetOrAdd(USER_ID_2).Points);
+                    Assert.Equal(2, ((MatchmakingRoomState)room.Item!.MatchState!).Users.GetOrAdd(USER_ID_2).Placement);
                 }
 
                 Receiver.Invocations.Clear();
@@ -250,6 +268,114 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             await Assert.ThrowsAsync<InvalidStateException>(() => Hub.InvitePlayer(USER_ID_2));
         }
 
+        /// <summary>
+        /// Tests that the stage advances when users leave, particularly in the case where the server is waiting on one to download the beatmap.
+        /// </summary>
+        [Fact]
+        public async Task StageAdvancesWhenUsersLeaveDuringDownload()
+        {
+            await Hub.JoinRoom(ROOM_ID);
+
+            SetUserContext(ContextUser2);
+            await Hub.JoinRoom(ROOM_ID);
+
+            await gotoStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
+
+            // Ready up the first user.
+            SetUserContext(ContextUser);
+            await Hub.ChangeState(MultiplayerUserState.Ready);
+            await Hub.ChangeBeatmapAvailability(BeatmapAvailability.LocallyAvailable());
+
+            // Quit the second user.
+            SetUserContext(ContextUser2);
+            await Hub.LeaveRoom();
+
+            await verifyStage(MatchmakingStage.GameplayWarmupTime);
+        }
+
+        /// <summary>
+        /// Tests that only the user beatmap picks will be the candidate items, when there are any user picks.
+        /// </summary>
+        [Fact]
+        public async Task UserPicksUsedForRandomSelection()
+        {
+            CreateUser(3, out Mock<HubCallerContext> contextUser3, out _);
+
+            using (var room = await Rooms.GetForUse(ROOM_ID, true))
+                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, [USER_ID, USER_ID_2, 3]);
+
+            await Hub.JoinRoom(ROOM_ID);
+
+            SetUserContext(ContextUser2);
+            await Hub.JoinRoom(ROOM_ID);
+
+            SetUserContext(contextUser3);
+            await Hub.JoinRoom(ROOM_ID);
+
+            long[] userPickIds;
+            using (var room = await Rooms.GetForUse(ROOM_ID))
+                userPickIds = room.Item!.Playlist.Take(2).Select(i => i.ID).ToArray();
+
+            await gotoStage(MatchmakingStage.UserBeatmapSelect);
+
+            // Players 1 and 2 select a beatmap, player 3 doesn't.
+            SetUserContext(ContextUser);
+            await Hub.MatchmakingToggleSelection(userPickIds[0]);
+            SetUserContext(ContextUser2);
+            await Hub.MatchmakingToggleSelection(userPickIds[1]);
+
+            await gotoStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
+
+            using (var room = await Rooms.GetForUse(ROOM_ID))
+                Assert.Equal(userPickIds, ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItems);
+        }
+
+        /// <summary>
+        /// Tests that when no user picks a beatmap, the server will select one beatmap at random.
+        /// </summary>
+        [Fact]
+        public async Task NoUserPicksServerSelectsBeatmap()
+        {
+            await Hub.JoinRoom(ROOM_ID);
+
+            SetUserContext(ContextUser2);
+            await Hub.JoinRoom(ROOM_ID);
+
+            await gotoStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
+
+            using (var room = await Rooms.GetForUse(ROOM_ID))
+                Assert.Single(((MatchmakingRoomState)room.Item!.MatchState!).CandidateItems);
+        }
+
+        [Fact]
+        public async Task IneligibleUserCanNotJoinRoom()
+        {
+            CreateUser(4, out Mock<HubCallerContext> contextUser4, out _);
+
+            SetUserContext(contextUser4);
+            await Assert.ThrowsAsync<InvalidStateException>(() => Hub.JoinRoom(ROOM_ID));
+        }
+
+        [Fact]
+        public async Task RandomSelection()
+        {
+            await Hub.JoinRoom(ROOM_ID);
+
+            await gotoStage(MatchmakingStage.UserBeatmapSelect);
+            using (var room = await Rooms.GetForUse(ROOM_ID))
+                room.Item!.Settings.PlaylistItemId = 0;
+
+            await Hub.MatchmakingToggleSelection(-1);
+            await gotoStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
+
+            using (var room = await Rooms.GetForUse(ROOM_ID))
+            {
+                Assert.Equal(-1, ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItem);
+                Assert.Equal([-1], ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItems);
+                Assert.True(room.Item!.Settings.PlaylistItemId > 0);
+            }
+        }
+
         private async Task verifyStage(MatchmakingStage stage)
         {
             using (var room = await Rooms.GetForUse(ROOM_ID))
@@ -329,6 +455,11 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                         throw new ArgumentOutOfRangeException(nameof(stage));
                 }
             }
+        }
+
+        public Task DisposeAsync()
+        {
+            return Task.CompletedTask;
         }
     }
 }

@@ -2,18 +2,20 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using osu.Game.Online.API;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
 using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
+using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Services;
-using Sentry;
 using StatsdClient;
 using System;
 using System.Collections.Concurrent;
@@ -37,26 +39,37 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
         private const string lobby_users_group = "matchmaking-lobby-users";
         private const string statsd_prefix = "matchmaking";
+        private static string queue_ban_start_time(int userId) => $"matchmaking-ban-start-time:{userId}";
 
         private readonly ConcurrentDictionary<int, MatchmakingQueue> poolQueues = new ConcurrentDictionary<int, MatchmakingQueue>();
 
         private readonly IHubContext<MultiplayerHub> hub;
         private readonly ISharedInterop sharedInterop;
         private readonly IDatabaseFactory databaseFactory;
+        private readonly EntityStore<ServerMultiplayerRoom> rooms;
+        private readonly IMultiplayerHubContext hubContext;
         private readonly ILogger logger;
+        private readonly IMemoryCache memoryCache;
+        private readonly RulesetManager manager;
 
         private DateTimeOffset lastLobbyUpdateTime = DateTimeOffset.UnixEpoch;
+        private DateTimeOffset lastQueueRefreshTime = DateTimeOffset.UnixEpoch;
 
-        public MatchmakingQueueBackgroundService(IHubContext<MultiplayerHub> hub, ISharedInterop sharedInterop, IDatabaseFactory databaseFactory, ILoggerFactory loggerFactory)
+        public MatchmakingQueueBackgroundService(IHubContext<MultiplayerHub> hub, ISharedInterop sharedInterop, IDatabaseFactory databaseFactory, ILoggerFactory loggerFactory,
+                                                 EntityStore<ServerMultiplayerRoom> rooms, IMultiplayerHubContext hubContext, IMemoryCache memoryCache, RulesetManager manager)
         {
             this.hub = hub;
             this.sharedInterop = sharedInterop;
             this.databaseFactory = databaseFactory;
+            this.rooms = rooms;
+            this.hubContext = hubContext;
+            this.memoryCache = memoryCache;
+            this.manager = manager;
 
             logger = loggerFactory.CreateLogger(nameof(MatchmakingQueueBackgroundService));
         }
 
-        public bool IsInQueue(MatchmakingClientState state)
+        public bool IsInQueue(MultiplayerClientState state)
         {
             foreach ((_, MatchmakingQueue queue) in poolQueues)
             {
@@ -67,17 +80,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             return false;
         }
 
-        public async Task AddToLobbyAsync(MatchmakingClientState state)
+        public async Task AddToLobbyAsync(MultiplayerClientState state)
         {
             await hub.Groups.AddToGroupAsync(state.ConnectionId, lobby_users_group);
         }
 
-        public async Task RemoveFromLobbyAsync(MatchmakingClientState state)
+        public async Task RemoveFromLobbyAsync(MultiplayerClientState state)
         {
             await hub.Groups.RemoveFromGroupAsync(state.ConnectionId, lobby_users_group);
         }
 
-        public async Task AddToQueueAsync(MatchmakingClientState state, int poolId)
+        public async Task AddToQueueAsync(MultiplayerClientState state, int poolId)
         {
             using (var db = databaseFactory.GetInstance())
             {
@@ -106,7 +119,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 MatchmakingQueueUser user = new MatchmakingQueueUser(state.ConnectionId)
                 {
                     UserId = state.UserId,
-                    Rating = stats.EloData.ApproximatePosterior
+                    Rating = stats.EloData.ApproximatePosterior,
+                    QueueBanStartTime = memoryCache.Get<DateTimeOffset?>(queue_ban_start_time(state.UserId)) ?? DateTimeOffset.MinValue
                 };
 
                 MatchmakingQueue queue = poolQueues.GetOrAdd(poolId, _ => new MatchmakingQueue(pool));
@@ -114,13 +128,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             }
         }
 
-        public async Task RemoveFromQueueAsync(MatchmakingClientState state)
+        public async Task RemoveFromQueueAsync(MultiplayerClientState state)
         {
             foreach ((_, MatchmakingQueue queue) in poolQueues)
                 await processBundle(queue.Remove(new MatchmakingQueueUser(state.ConnectionId)));
         }
 
-        public async Task AcceptInvitationAsync(MatchmakingClientState state)
+        public async Task AcceptInvitationAsync(MultiplayerClientState state)
         {
             // Immediately notify the incoming user of their intent to join the match.
             await hub.Clients.Client(state.ConnectionId).SendAsync(nameof(IMatchmakingClient.MatchmakingQueueStatusChanged), new MatchmakingQueueStatus.JoiningMatch());
@@ -129,7 +143,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 await processBundle(queue.MarkInvitationAccepted(new MatchmakingQueueUser(state.ConnectionId)));
         }
 
-        public async Task DeclineInvitationAsync(MatchmakingClientState state)
+        public async Task DeclineInvitationAsync(MultiplayerClientState state)
         {
             foreach ((_, MatchmakingQueue queue) in poolQueues)
                 await processBundle(queue.MarkInvitationDeclined(new MatchmakingQueueUser(state.ConnectionId)));
@@ -139,30 +153,44 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                await ExecuteOnceAsync();
+                await Task.Delay(queue_update_rate, stoppingToken);
+            }
+        }
+
+        /// <summary>
+        /// Executes a single update of the queues.
+        /// </summary>
+        public async Task ExecuteOnceAsync()
+        {
+            try
+            {
+                await updateLobby();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to update the matchmaking lobby.");
+            }
+
+            try
+            {
+                await refreshQueues();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to refresh the matchmaking queue.");
+            }
+
+            foreach ((_, MatchmakingQueue queue) in poolQueues)
+            {
                 try
                 {
-                    await updateLobby();
+                    await processBundle(queue.Update());
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Failed to update the matchmaking lobby.");
-                    SentrySdk.CaptureException(ex);
+                    logger.LogError(ex, "Failed to update the matchmaking queue for pool {poolId}.", queue.Pool.id);
                 }
-
-                foreach ((_, MatchmakingQueue queue) in poolQueues)
-                {
-                    try
-                    {
-                        await processBundle(queue.Update());
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to update the matchmaking queue for pool {poolId}.", queue.Pool.id);
-                        SentrySdk.CaptureException(ex);
-                    }
-                }
-
-                await Task.Delay(queue_update_rate, stoppingToken);
             }
         }
 
@@ -171,9 +199,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             if (DateTimeOffset.Now - lastLobbyUpdateTime < lobby_update_rate)
                 return;
 
-            MatchmakingQueueUser[] users = poolQueues.Values.SelectMany(queue => queue.GetAllUsers()).ToArray();
-            DogStatsd.Counter($"{statsd_prefix}.users_queued", users.Length);
+            foreach ((_, MatchmakingQueue queue) in poolQueues)
+                DogStatsd.Gauge($"{statsd_prefix}.queue.users", queue.Count, tags: [$"queue:{queue.Pool.name}"]);
 
+            MatchmakingQueueUser[] users = poolQueues.Values.SelectMany(queue => queue.GetAllUsers()).ToArray();
             Random.Shared.Shuffle(users);
             int[] usersSample = users.Take(50).Select(u => u.UserId).ToArray();
 
@@ -185,8 +214,34 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             lastLobbyUpdateTime = DateTimeOffset.Now;
         }
 
+        private async Task refreshQueues()
+        {
+            if (DateTimeOffset.Now - lastQueueRefreshTime < TimeSpan.FromMinutes(1))
+                return;
+
+            using (var db = databaseFactory.GetInstance())
+            {
+                foreach ((_, MatchmakingQueue queue) in poolQueues)
+                {
+                    matchmaking_pool? newPool = await db.GetMatchmakingPoolAsync(queue.Pool.id);
+                    queue.Refresh(newPool ?? queue.Pool);
+                }
+            }
+
+            lastQueueRefreshTime = DateTimeOffset.Now;
+        }
+
         private async Task processBundle(MatchmakingQueueUpdateBundle bundle)
         {
+            foreach (var user in bundle.DeclinedUsers)
+            {
+                // Right now this will just delay the user from being included in matchmaking for a set period.
+                // This will be silent to users affected (see `MatchmakingQueue.matchUsers`).
+                //
+                // TODO: we should probably let the players know that they have been penalised.
+                memoryCache.Set(queue_ban_start_time(user.UserId), bundle.Queue.Clock.UtcNow);
+            }
+
             foreach (var user in bundle.RemovedUsers)
                 await hub.Clients.Client(user.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingQueueLeft));
 
@@ -198,8 +253,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
             foreach (var group in bundle.FormedGroups)
             {
-                DogStatsd.Increment($"{statsd_prefix}.groups_formed");
-
                 foreach (var user in group.Users)
                     await hub.Groups.AddToGroupAsync(user.Identifier, group.Identifier, CancellationToken.None);
 
@@ -209,9 +262,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
             foreach (var group in bundle.CompletedGroups)
             {
-                DogStatsd.Increment($"{statsd_prefix}.groups_completed");
                 foreach (var user in group.Users)
-                    DogStatsd.Timer($"{statsd_prefix}.queue_wait_time", (DateTimeOffset.Now - user.SearchStartTime).TotalMilliseconds);
+                    DogStatsd.Timer($"{statsd_prefix}.queue.duration", (DateTimeOffset.Now - user.SearchStartTime).TotalMilliseconds, tags: [$"queue:{bundle.Queue.Pool.name}"]);
 
                 string password = Guid.NewGuid().ToString();
                 long roomId = await sharedInterop.CreateRoomAsync(AppSettings.BanchoBotUserId, new MultiplayerRoom(0)
@@ -224,11 +276,38 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                     Playlist = await queryPlaylistItems(bundle.Queue.Pool, group.Users.Select(u => u.Rating).ToArray())
                 });
 
+                // Initialise the room and users
+                using (var roomUsage = await rooms.GetForUse(roomId, true))
+                    roomUsage.Item = await InitialiseRoomAsync(roomId, hubContext, databaseFactory, group.Users.Select(u => u.UserId).ToArray(), manager);
+
                 await hub.Clients.Group(group.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingRoomReady), roomId, password);
 
                 foreach (var user in group.Users)
                     await hub.Groups.RemoveFromGroupAsync(user.Identifier, group.Identifier);
             }
+        }
+
+        /// <summary>
+        /// Initialises a matchmaking room with the given eligible user IDs.
+        /// </summary>
+        /// <param name="roomId">The room identifier.</param>
+        /// <param name="hub">The multiplayer hub context.</param>
+        /// <param name="dbFactory">The database factory.</param>
+        /// <param name="eligibleUserIds">The users who are allowed to join the room.</param>
+        /// <param name="manager">The ruleset manager.</param>
+        /// <exception cref="InvalidOperationException">If the room is not a matchmaking room in the database.</exception>
+        public static async Task<ServerMultiplayerRoom> InitialiseRoomAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, int[] eligibleUserIds, RulesetManager manager)
+        {
+            ServerMultiplayerRoom room = await ServerMultiplayerRoom.InitialiseAsync(roomId, hub, dbFactory, manager);
+
+            if (room.MatchState is not MatchmakingRoomState matchmakingState)
+                throw new InvalidOperationException("Failed to initialise the matchmaking room.");
+
+            // Initialise each user (this object doesn't have a .Add() method).
+            foreach (int user in eligibleUserIds)
+                matchmakingState.Users.GetOrAdd(user);
+
+            return room;
         }
 
         private async Task<MultiplayerPlaylistItem[]> queryPlaylistItems(matchmaking_pool pool, EloRating[] ratings)
