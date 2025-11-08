@@ -40,7 +40,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (CurrentRoomID == null)
                 return;
 
-            CurrentRoomID = -1;
+            CurrentRoomID = null;
             DogStatsd.Gauge($"{MultiplayerHub.STATSD_PREFIX}.users", Interlocked.Decrement(ref countUsersInRooms));
         }
     }
