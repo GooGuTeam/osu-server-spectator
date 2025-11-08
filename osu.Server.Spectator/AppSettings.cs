@@ -45,7 +45,7 @@ namespace osu.Server.Spectator
         public static string JwtAlgorithm { get; } = "HS256";
         public static int JwtAccessTokenExpireMinutes { get; } = 1440;
         public static int OsuClientId { get; } = 5;
-        public static bool UseLegacyRsaAuth { get; } = true;
+        public static bool UseLegacyRsaAuth { get; }
 
         #endregion
 
@@ -112,8 +112,7 @@ namespace osu.Server.Spectator
                 ? jwtExpireMinutes
                 : JwtAccessTokenExpireMinutes;
             OsuClientId = int.TryParse(Environment.GetEnvironmentVariable("OSU_CLIENT_ID"), out int osuClientId) ? osuClientId : OsuClientId;
-            UseLegacyRsaAuth = Environment.GetEnvironmentVariable("USE_LEGACY_RSA_AUTH") is not string useLegacyRsaAuth || !bool.TryParse(useLegacyRsaAuth, out bool isUseLegacyRsaAuth)
-                                                                                                                        || isUseLegacyRsaAuth;
+            UseLegacyRsaAuth = bool.TryParse(Environment.GetEnvironmentVariable("USE_LEGACY_RSA_AUTH"), out bool useLegacyRsaAuth) ? useLegacyRsaAuth: UseLegacyRsaAuth;
 
             BanchoBotUserId = int.TryParse(Environment.GetEnvironmentVariable("BANCHO_BOT_USER_ID"), out int banchoBotUserId) ? banchoBotUserId : BanchoBotUserId;
 
