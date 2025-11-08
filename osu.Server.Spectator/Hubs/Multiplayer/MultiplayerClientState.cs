@@ -19,7 +19,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private static int countUsersInRooms;
 
         [JsonConstructor]
-        public MultiplayerClientState(in string connectionId, in int userId, in long currentRoomID = -1, in Dictionary<string, string>? rulesetHashes = null)
+        public MultiplayerClientState(in string connectionId, in int userId, in long? currentRoomID = null, in Dictionary<string, string>? rulesetHashes = null)
             : base(connectionId, userId)
         {
             CurrentRoomID = currentRoomID;
