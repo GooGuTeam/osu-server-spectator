@@ -32,18 +32,18 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                         user_id = int.Parse(Hub.Context.UserIdentifier!),
                     });
 
-            Database.Setup(db => db.GetMatchmakingUserStatsAsync(It.IsAny<int>(), It.IsAny<int>()))
-                    .Returns<int, int>((userId, rulesetId) => Task.FromResult<matchmaking_user_stats?>(new matchmaking_user_stats
+            Database.Setup(db => db.GetMatchmakingUserStatsAsync(It.IsAny<int>(), It.IsAny<uint>()))
+                    .Returns<int, uint>((userId, poolId) => Task.FromResult<matchmaking_user_stats?>(new matchmaking_user_stats
                     {
                         user_id = (uint)userId,
-                        ruleset_id = (ushort)rulesetId
+                        pool_id = poolId
                     }));
         }
 
         public async Task InitializeAsync()
         {
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
-                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, [USER_ID, USER_ID_2]);
+                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, EventLogger, [USER_ID, USER_ID_2], 0);
         }
 
         [Fact]
@@ -302,7 +302,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             CreateUser(3, out Mock<HubCallerContext> contextUser3, out _);
 
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
-                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, [USER_ID, USER_ID_2, 3]);
+                room.Item = await MatchmakingQueueBackgroundService.InitialiseRoomAsync(ROOM_ID, HubContext, DatabaseFactory.Object, EventLogger, [USER_ID, USER_ID_2, 3], 0);
 
             await Hub.JoinRoom(ROOM_ID);
 
@@ -327,7 +327,10 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             await gotoStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
 
             using (var room = await Rooms.GetForUse(ROOM_ID))
+            {
                 Assert.Equal(userPickIds, ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItems);
+                Assert.True(((MatchmakingRoomState)room.Item!.MatchState!).CandidateItem > 0);
+            }
         }
 
         /// <summary>
@@ -370,8 +373,9 @@ namespace osu.Server.Spectator.Tests.Matchmaking
 
             using (var room = await Rooms.GetForUse(ROOM_ID))
             {
-                Assert.Equal(-1, ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItem);
                 Assert.Equal([-1], ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItems);
+                Assert.Equal(-1, ((MatchmakingRoomState)room.Item!.MatchState!).CandidateItem);
+                Assert.NotEqual(-1, ((MatchmakingRoomState)room.Item!.MatchState!).GameplayItem);
                 Assert.True(room.Item!.Settings.PlaylistItemId > 0);
             }
         }

@@ -242,6 +242,11 @@ namespace osu.Server.Spectator.Database
         Task LogRoomEventAsync(multiplayer_realtime_room_event ev);
 
         /// <summary>
+        /// Logs an event that happened in a matchmaking room.
+        /// </summary>
+        Task LogRoomEventAsync(matchmaking_room_event ev);
+
+        /// <summary>
         /// 预确保谱面存在。
         /// </summary>
         /// <remarks>
@@ -269,13 +274,13 @@ namespace osu.Server.Spectator.Database
 
         Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync();
 
-        Task<matchmaking_pool?> GetMatchmakingPoolAsync(int poolId);
+        Task<matchmaking_pool?> GetMatchmakingPoolAsync(uint poolId);
 
-        Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(int poolId);
+        Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(uint poolId);
 
         Task IncrementMatchmakingSelectionCount(matchmaking_pool_beatmap[] beatmaps);
 
-        Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId);
+        Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId);
 
         Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
     }

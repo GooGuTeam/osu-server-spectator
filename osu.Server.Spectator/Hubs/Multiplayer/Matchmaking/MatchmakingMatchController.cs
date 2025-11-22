@@ -89,26 +89,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
         public MultiplayerPlaylistItem CurrentItem => room.CurrentPlaylistItem;
 
+        public uint PoolId { get; set; }
+
         private readonly ServerMultiplayerRoom room;
         private readonly IMultiplayerHubContext hub;
         private readonly IDatabaseFactory dbFactory;
+        private readonly MultiplayerEventLogger eventLogger;
         private readonly MatchmakingRoomState state;
         private readonly Dictionary<int, long> userPicks = new Dictionary<int, long>();
-        private readonly int rulesetId;
 
         private int joinedUserCount;
 
-        public MatchmakingMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory)
+        public MatchmakingMatchController(ServerMultiplayerRoom room, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, MultiplayerEventLogger eventLogger)
         {
             this.room = room;
             this.hub = hub;
             this.dbFactory = dbFactory;
+            this.eventLogger = eventLogger;
 
             room.MatchState = state = new MatchmakingRoomState();
             room.Settings.PlaylistItemId = room.Playlist[Random.Shared.Next(0, room.Playlist.Count)].ID;
-
-            // Todo: This should be retrieved from the room creation parameters instead.
-            rulesetId = CurrentItem.RulesetID;
         }
 
         public async Task Initialise()
@@ -153,6 +153,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             switch (state.Stage)
             {
                 case MatchmakingStage.WaitingForClientsJoin:
+                    await eventLogger.LogMatchmakingUserJoinAsync(room.RoomID, user.UserID);
+
                     if (++joinedUserCount >= state.Users.Count)
                         await stageRoundWarmupTime(room);
                     break;
@@ -260,6 +262,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
         private async Task stageServerBeatmapFinalised(ServerMultiplayerRoom _)
         {
+            foreach ((int userId, long playlistItemId) in userPicks)
+                await eventLogger.LogMatchmakingUserPickAsync(room.RoomID, userId, playlistItemId);
+
             long[] pickIds = userPicks.Values.ToArray();
 
             // When there are no picks, select ONE beatmap at random to be played.
@@ -268,6 +273,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
             state.CandidateItems = pickIds.Distinct().ToArray();
             state.CandidateItem = pickIds[Random.Shared.Next(0, pickIds.Length)];
+            state.GameplayItem = state.CandidateItem == -1
+                ? Random.Shared.GetItems(room.Playlist.Where(item => !item.Expired).Select(i => i.ID).ToArray(), 1)[0]
+                : state.CandidateItem;
 
             await changeStage(MatchmakingStage.ServerBeatmapFinalised);
             await startCountdown(state.CandidateItems.Length == 1
@@ -278,11 +286,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
         private async Task stageWaitingForClientsBeatmapDownload(ServerMultiplayerRoom _)
         {
-            room.Settings.PlaylistItemId = state.CandidateItem == -1
-                ? Random.Shared.GetItems(room.Playlist.Where(item => !item.Expired).Select(i => i.ID).ToArray(), 1)[0]
-                : state.CandidateItem;
-
+            // The settings playlist item controls various components by the client such as download tracking,
+            // so it is set as late as possible to not inedvertently reveal it before animations are complete.
+            room.Settings.PlaylistItemId = state.GameplayItem;
             await hub.NotifySettingsChanged(room, true);
+
+            await eventLogger.LogMatchmakingGameplayBeatmapAsync(room.RoomID, room.Settings.PlaylistItemId);
 
             await changeStage(MatchmakingStage.WaitingForClientsBeatmapDownload);
             await startCountdown(TimeSpan.FromSeconds(stage_prepare_beatmap_time), _ => anyUsersReady() ? stageGameplayWarmupTime(room) : stageWaitingForClientsBeatmapDownload(room));
@@ -338,10 +347,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
                 foreach (var user in state.Users.Where(u => u.Points > 0).OrderBy(u => u.Placement))
                 {
-                    matchmaking_user_stats stats = await db.GetMatchmakingUserStatsAsync(user.UserId, rulesetId) ?? new matchmaking_user_stats
+                    matchmaking_user_stats stats = await db.GetMatchmakingUserStatsAsync(user.UserId, PoolId) ?? new matchmaking_user_stats
                     {
                         user_id = (uint)user.UserId,
-                        ruleset_id = (ushort)rulesetId
+                        pool_id = PoolId
                     };
 
                     if (user.Placement == 1)

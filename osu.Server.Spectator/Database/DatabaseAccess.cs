@@ -645,6 +645,16 @@ namespace osu.Server.Spectator.Database
                 ev);
         }
 
+        public async Task LogRoomEventAsync(matchmaking_room_event ev)
+        {
+            var connection = await getConnectionAsync();
+
+            await connection.ExecuteAsync(
+                "INSERT INTO `matchmaking_room_events` (`room_id`, `event_type`, `playlist_item_id`, `user_id`, `event_detail`, `created_at`, `updated_at`) "
+                + "VALUES (@room_id, @event_type, @playlist_item_id, @user_id, @event_detail, NOW(), NOW())",
+                ev);
+        }
+
         public async Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after)
         {
             var connection = await getConnectionAsync();
@@ -685,14 +695,14 @@ namespace osu.Server.Spectator.Database
             return (await connection.QueryAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `active` = 1")).ToArray();
         }
 
-        public async Task<matchmaking_pool?> GetMatchmakingPoolAsync(int poolId)
+        public async Task<matchmaking_pool?> GetMatchmakingPoolAsync(uint poolId)
         {
             var connection = await getConnectionAsync();
 
             return await connection.QuerySingleOrDefaultAsync<matchmaking_pool>("SELECT * FROM `matchmaking_pools` WHERE `id` = @PoolId", new { PoolId = poolId });
         }
 
-        public async Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(int poolId)
+        public async Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(uint poolId)
         {
             var connection = await getConnectionAsync();
 
@@ -710,32 +720,33 @@ namespace osu.Server.Spectator.Database
                                           + "WHERE id IN @ItemIDs", new { ItemIDs = beatmaps.Select(b => b.id).ToArray() });
         }
 
-        public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, int rulesetId)
+        public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId)
         {
             var connection = await getConnectionAsync();
 
-            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `ruleset_id` = @RulesetId",
-                new { UserId = userId, RulesetId = rulesetId });
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `pool_id` = @PoolId", new
+            {
+                UserId = userId,
+                PoolId = poolId
+            });
         }
 
         public async Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats)
         {
             var connection = await getConnectionAsync();
 
-            await connection.ExecuteAsync("INSERT INTO `matchmaking_user_stats` (`user_id`, `ruleset_id`, `first_placements`, `total_points`, `rating`, `elo_data`, `created_at`, `updated_at`) "
-                                          + "VALUES (@UserId, @RulesetId, @FirstPlacements, @TotalPoints, @Rating, @EloData, NOW(), NOW()) "
+            await connection.ExecuteAsync("INSERT INTO `matchmaking_user_stats` (`user_id`, `pool_id`, `first_placements`, `total_points`, `elo_data`, `created_at`, `updated_at`) "
+                                          + "VALUES (@UserId, @PoolId, @FirstPlacements, @TotalPoints, @EloData, NOW(), NOW()) "
                                           + "ON DUPLICATE KEY UPDATE "
                                           + "`first_placements` = @FirstPlacements, "
                                           + "`total_points` = @TotalPoints, "
-                                          + "`rating` = @Rating, "
                                           + "`elo_data` = @EloData, "
                                           + "`updated_at` = NOW()", new
             {
                 UserId = stats.user_id,
-                RulesetId = stats.ruleset_id,
+                PoolId = stats.pool_id,
                 FirstPlacements = stats.first_placements,
                 TotalPoints = stats.total_points,
-                Rating = Math.Round(stats.EloData.ApproximatePosterior.Mu),
                 EloData = stats.elo_data
             });
         }

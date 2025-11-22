@@ -29,14 +29,16 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private readonly IMultiplayerHubContext hub;
         private readonly IDatabaseFactory dbFactory;
+        private readonly MultiplayerEventLogger eventLogger;
         private IMatchController? matchController;
         private readonly RulesetManager manager;
 
-        private ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
+        private ServerMultiplayerRoom(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, MultiplayerEventLogger eventLogger, RulesetManager manager)
             : base(roomId)
         {
             this.hub = hub;
             this.dbFactory = dbFactory;
+            this.eventLogger = eventLogger;
             this.manager = manager;
         }
 
@@ -48,12 +50,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <param name="roomId">The room identifier.</param>
         /// <param name="hub">The multiplayer hub context.</param>
         /// <param name="dbFactory">The database factory.</param>
+        /// <param name="eventLogger">The event logger.</param>
         /// <param name="manager">The ruleset manager.</param>
         /// <exception cref="InvalidOperationException">If the room does not exist in the database.</exception>
         /// <exception cref="InvalidStateException">If the match has already ended.</exception>
-        public static async Task<ServerMultiplayerRoom> InitialiseAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, RulesetManager manager)
+        public static async Task<ServerMultiplayerRoom> InitialiseAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, MultiplayerEventLogger eventLogger, RulesetManager manager)
         {
-            ServerMultiplayerRoom room = new ServerMultiplayerRoom(roomId, hub, dbFactory, manager);
+            ServerMultiplayerRoom room = new ServerMultiplayerRoom(roomId, hub, dbFactory, eventLogger, manager);
 
             // TODO: this call should be transactional, and mark the room as managed by this server instance.
             // This will allow for other instances to know not to reinitialise the room if the host arrives there.
@@ -115,7 +118,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             switch (type)
             {
                 case MatchType.Matchmaking:
-                    return ChangeMatchType(new MatchmakingMatchController(this, hub, dbFactory));
+                    return ChangeMatchType(new MatchmakingMatchController(this, hub, dbFactory, eventLogger));
 
                 case MatchType.TeamVersus:
                     return ChangeMatchType(new TeamVersusMatchController(this, hub, dbFactory, manager));

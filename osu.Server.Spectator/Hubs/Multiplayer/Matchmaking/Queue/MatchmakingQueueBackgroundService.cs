@@ -51,12 +51,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         private readonly ILogger logger;
         private readonly IMemoryCache memoryCache;
         private readonly RulesetManager manager;
+        private readonly MultiplayerEventLogger eventLogger;
 
         private DateTimeOffset lastLobbyUpdateTime = DateTimeOffset.UnixEpoch;
         private DateTimeOffset lastQueueRefreshTime = DateTimeOffset.UnixEpoch;
 
         public MatchmakingQueueBackgroundService(IHubContext<MultiplayerHub> hub, ISharedInterop sharedInterop, IDatabaseFactory databaseFactory, ILoggerFactory loggerFactory,
-                                                 EntityStore<ServerMultiplayerRoom> rooms, IMultiplayerHubContext hubContext, IMemoryCache memoryCache, RulesetManager manager)
+                                                 EntityStore<ServerMultiplayerRoom> rooms, IMultiplayerHubContext hubContext, IMemoryCache memoryCache, MultiplayerEventLogger eventLogger,RulesetManager manager)
         {
             this.hub = hub;
             this.sharedInterop = sharedInterop;
@@ -65,6 +66,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             this.hubContext = hubContext;
             this.memoryCache = memoryCache;
             this.manager = manager;
+            this.eventLogger = eventLogger;
 
             logger = loggerFactory.CreateLogger(nameof(MatchmakingQueueBackgroundService));
         }
@@ -94,8 +96,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         {
             using (var db = databaseFactory.GetInstance())
             {
-                matchmaking_pool pool = await db.GetMatchmakingPoolAsync(poolId) ?? throw new InvalidStateException($"Pool not found: {poolId}");
-                matchmaking_user_stats? stats = await db.GetMatchmakingUserStatsAsync(state.UserId, pool.ruleset_id);
+                matchmaking_pool pool = await db.GetMatchmakingPoolAsync((uint)poolId) ?? throw new InvalidStateException($"Pool not found: {poolId}");
+                matchmaking_user_stats? stats = await db.GetMatchmakingUserStatsAsync(state.UserId, (uint)poolId);
 
                 if (stats == null)
                 {
@@ -106,7 +108,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                     await db.UpdateMatchmakingUserStatsAsync(stats = new matchmaking_user_stats
                     {
                         user_id = (uint)state.UserId,
-                        ruleset_id = (ushort)pool.ruleset_id,
+                        pool_id = pool.id,
                         EloData =
                         {
                             InitialRating = new EloRating(eloEstimate),
@@ -251,8 +253,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 await hub.Clients.Client(user.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingQueueStatusChanged), new MatchmakingQueueStatus.Searching());
             }
 
+            foreach (var group in bundle.RecycledGroups)
+            {
+                DogStatsd.Increment($"{statsd_prefix}.groups.recycled");
+
+                foreach (var user in group.Users)
+                    await hub.Groups.RemoveFromGroupAsync(user.Identifier, group.Identifier);
+            }
+
             foreach (var group in bundle.FormedGroups)
             {
+                DogStatsd.Increment($"{statsd_prefix}.groups.formed");
+
                 foreach (var user in group.Users)
                     await hub.Groups.AddToGroupAsync(user.Identifier, group.Identifier, CancellationToken.None);
 
@@ -262,6 +274,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
             foreach (var group in bundle.CompletedGroups)
             {
+                DogStatsd.Increment($"{statsd_prefix}.groups.completed");
+
                 foreach (var user in group.Users)
                     DogStatsd.Timer($"{statsd_prefix}.queue.duration", (DateTimeOffset.Now - user.SearchStartTime).TotalMilliseconds, tags: [$"queue:{bundle.Queue.Pool.name}"]);
 
@@ -278,12 +292,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
                 // Initialise the room and users
                 using (var roomUsage = await rooms.GetForUse(roomId, true))
-                    roomUsage.Item = await InitialiseRoomAsync(roomId, hubContext, databaseFactory, group.Users.Select(u => u.UserId).ToArray(), manager);
+                    roomUsage.Item = await InitialiseRoomAsync(roomId, hubContext, databaseFactory, eventLogger, group.Users.Select(u => u.UserId).ToArray(), bundle.Queue.Pool.id, manager);
 
                 await hub.Clients.Group(group.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingRoomReady), roomId, password);
 
                 foreach (var user in group.Users)
                     await hub.Groups.RemoveFromGroupAsync(user.Identifier, group.Identifier);
+
+                await eventLogger.LogMatchmakingRoomCreatedAsync(roomId, new MatchmakingRoomCreatedEventDetail
+                {
+                    pool_id = (int)bundle.Queue.Pool.id
+                });
             }
         }
 
@@ -293,19 +312,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         /// <param name="roomId">The room identifier.</param>
         /// <param name="hub">The multiplayer hub context.</param>
         /// <param name="dbFactory">The database factory.</param>
+        /// <param name="eventLogger">The event logger.</param>
         /// <param name="eligibleUserIds">The users who are allowed to join the room.</param>
+        /// <param name="poolId">The pool ID.</param>
         /// <param name="manager">The ruleset manager.</param>
         /// <exception cref="InvalidOperationException">If the room is not a matchmaking room in the database.</exception>
-        public static async Task<ServerMultiplayerRoom> InitialiseRoomAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, int[] eligibleUserIds, RulesetManager manager)
+        public static async Task<ServerMultiplayerRoom> InitialiseRoomAsync(long roomId, IMultiplayerHubContext hub, IDatabaseFactory dbFactory, MultiplayerEventLogger eventLogger,
+                                                                            int[] eligibleUserIds, uint poolId, RulesetManager manager)
         {
-            ServerMultiplayerRoom room = await ServerMultiplayerRoom.InitialiseAsync(roomId, hub, dbFactory, manager);
+            ServerMultiplayerRoom room = await ServerMultiplayerRoom.InitialiseAsync(roomId, hub, dbFactory, eventLogger, manager);
 
             if (room.MatchState is not MatchmakingRoomState matchmakingState)
-                throw new InvalidOperationException("Failed to initialise the matchmaking room.");
+                throw new InvalidOperationException("Failed to initialise the matchmaking room (invalid state).");
 
-            // Initialise each user (this object doesn't have a .Add() method).
             foreach (int user in eligibleUserIds)
                 matchmakingState.Users.GetOrAdd(user);
+
+            if (room.Controller is not MatchmakingMatchController matchmakingController)
+                throw new InvalidOperationException("Failed to initialise the matchmaking room (invalid controller).");
+
+            matchmakingController.PoolId = poolId;
 
             return room;
         }
