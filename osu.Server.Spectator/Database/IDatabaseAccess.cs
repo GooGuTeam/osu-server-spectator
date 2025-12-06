@@ -85,8 +85,6 @@ namespace osu.Server.Spectator.Database
         /// </summary>
         Task AddLoginForUserAsync(int userId, string? userIp);
 
-        Task OfflineUser(int userId);
-
         /// <summary>
         /// Remove a new participant for the specified <paramref name="room"/> in the database.
         /// </summary>
@@ -283,5 +281,7 @@ namespace osu.Server.Spectator.Database
         Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId);
 
         Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
+
+        Task UpdateUserOnlineStatusAsync(int userId, bool isOnline);
     }
 }

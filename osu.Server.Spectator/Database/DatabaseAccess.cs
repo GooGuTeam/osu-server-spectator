@@ -329,12 +329,6 @@ namespace osu.Server.Spectator.Database
             // }
         }
 
-        public async Task OfflineUser(int userId)
-        {
-            var connection = await getConnectionAsync();
-            await connection.ExecuteAsync("UPDATE lazer_users SET last_visit = NOW() WHERE `id` = @userId", new { userId = userId });
-        }
-
         public async Task RemoveRoomParticipantAsync(MultiplayerRoom room, MultiplayerRoomUser user)
         {
             var connection = await getConnectionAsync();
@@ -742,13 +736,32 @@ namespace osu.Server.Spectator.Database
                                           + "`total_points` = @TotalPoints, "
                                           + "`elo_data` = @EloData, "
                                           + "`updated_at` = NOW()", new
+                                          {
+                                              UserId = stats.user_id,
+                                              PoolId = stats.pool_id,
+                                              FirstPlacements = stats.first_placements,
+                                              TotalPoints = stats.total_points,
+                                              EloData = stats.elo_data
+                                          });
+        }
+
+        public async Task UpdateUserOnlineStatusAsync(int userId, bool isOnline)
+        {
+            var connection = await getConnectionAsync();
+
+            await connection.ExecuteAsync("UPDATE lazer_users SET is_online = @IsOnline WHERE id = @UserId", new
             {
-                UserId = stats.user_id,
-                PoolId = stats.pool_id,
-                FirstPlacements = stats.first_placements,
-                TotalPoints = stats.total_points,
-                EloData = stats.elo_data
+                IsOnline = isOnline,
+                UserId = userId
             });
+
+            if (!isOnline)
+            {
+                await connection.ExecuteAsync("UPDATE lazer_users SET last_visit = NOW() WHERE id = @UserId", new
+                {
+                    UserId = userId
+                });
+            }
         }
 
         public void Dispose()
