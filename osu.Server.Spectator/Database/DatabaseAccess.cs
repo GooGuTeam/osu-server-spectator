@@ -60,6 +60,13 @@ namespace osu.Server.Spectator.Database
             return await connection.QueryFirstOrDefaultAsync<string?>("SELECT username FROM lazer_users WHERE id = @UserID", new { UserID = userId });
         }
 
+        public async Task<int[]> GetUsersInGroupsAsync(int[] groupIds)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<int>("SELECT DISTINCT `user_id` FROM `phpbb_user_group` WHERE `group_id` IN @groupIds", new { groupIds = groupIds })).ToArray();
+        }
+
         public async Task<bool> IsUserRestrictedAsync(int userId)
         {
             var connection = await getConnectionAsync();
@@ -535,6 +542,11 @@ namespace osu.Server.Spectator.Database
             return new osu_build { build_id = (uint)buildId, version = "unknown", hash = null, users = 0 };
         }
 
+        public Task<osu_build?> GetBuildByHashAsync(string hash)
+        {
+            return Task.FromResult<osu_build?>(null);
+        }
+
         public Task<IEnumerable<osu_build>> GetAllMainLazerBuildsAsync()
         {
             // g0v0-server doesn't have osu_builds table, return empty list
@@ -580,6 +592,17 @@ namespace osu.Server.Spectator.Database
                 + "FROM `scores` "
                 + "WHERE `id` = @scoreId",
                 new { scoreId = scoreId });
+        }
+
+        public async Task<bool> AnyScoreTokenExistsFor(long playlistItemId, long roomId)
+        {
+            var connection = await getConnectionAsync();
+
+            var scoreTokenCount = await connection.QuerySingleAsync<long>(
+                "SELECT COUNT(1) FROM `score_tokens` WHERE `playlist_item_id` = @playlistItemId AND `room_id` = @roomId",
+                new { playlistItemId = playlistItemId, roomId = roomId });
+
+            return scoreTokenCount > 0;
         }
 
         public async Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId)
@@ -678,7 +701,7 @@ namespace osu.Server.Spectator.Database
             //     });
         }
 
-        public async Task<float> GetUserPPAsync(int userId, int rulesetId)
+        public async Task<float> GetUserPPAsync(int userId, int rulesetId, int variant)
         {
             var connection = await getConnectionAsync();
 
@@ -711,24 +734,51 @@ namespace osu.Server.Spectator.Database
                                                                           + "WHERE p.pool_id = @PoolId", new { PoolId = poolId })).ToArray();
         }
 
-        public async Task IncrementMatchmakingSelectionCount(matchmaking_pool_beatmap[] beatmaps)
+        public async Task<database_beatmap[]> GetMatchmakingGlobalPoolBeatmapsAsync(int rulesetId, int variant)
         {
             var connection = await getConnectionAsync();
 
-            await connection.ExecuteAsync("UPDATE matchmaking_pool_beatmaps "
-                                          + "SET selection_count = selection_count + 1 "
-                                          + "WHERE id IN @ItemIDs", new { ItemIDs = beatmaps.Select(b => b.id).ToArray() });
+            string modeString;
+
+            switch (rulesetId)
+            {
+                case 0:
+                    modeString = "osu";
+                    break;
+
+                case 1:
+                    modeString = "taiko";
+                    break;
+
+                case 2:
+                    modeString = "fruits";
+                    break;
+
+                case 3:
+                    modeString = "mania";
+                    break;
+
+                default:
+                    // Unsupported ruleset
+                    return Array.Empty<database_beatmap>();
+            }
+
+            return (await connection.QueryAsync<database_beatmap>("SELECT b.beatmap_id, b.checksum, b.difficulty_rating FROM `beatmaps` b "
+                                                                  + "JOIN `beatmapsets` s ON s.beatmapset_id = b.beatmapset_id "
+                                                                  + "WHERE s.track_id IS NOT NULL "
+                                                                  + "AND b.mode = @Mode "
+                                                                  + "AND b.deleted_at IS NULL "
+                                                                  + "AND (b.beatmap_status = 'RANKED' OR b.beatmap_status = 'APPROVED') "
+                                                                  + "AND b.hit_length BETWEEN 60 AND 240 ",
+                new { Mode = modeString, })).ToArray();
         }
 
         public async Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId)
         {
             var connection = await getConnectionAsync();
 
-            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `pool_id` = @PoolId", new
-            {
-                UserId = userId,
-                PoolId = poolId
-            });
+            return await connection.QuerySingleOrDefaultAsync<matchmaking_user_stats>("SELECT * FROM `matchmaking_user_stats` WHERE `user_id` = @UserId AND `pool_id` = @PoolId",
+                new { UserId = userId, PoolId = poolId });
         }
 
         public async Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats)

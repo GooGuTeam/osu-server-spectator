@@ -28,6 +28,11 @@ namespace osu.Server.Spectator.Database.Models
         public int rating_search_radius { get; set; }
 
         /// <summary>
+        /// The maximum search radius.
+        /// </summary>
+        public int rating_search_radius_max { get; set; } = 9999;
+
+        /// <summary>
         /// The amount of time (in seconds) before each doubling of the <see cref="rating_search_radius">rating search radius</see>.
         /// </summary>
         public int rating_search_radius_exp { get; set; }
@@ -39,5 +44,29 @@ namespace osu.Server.Spectator.Database.Models
             Variant = variant_id,
             Name = name,
         };
+
+        public string DisplayName
+        {
+            get
+            {
+                switch (ruleset_id)
+                {
+                    case 0:
+                        return $"osu! ({name})";
+
+                    case 1:
+                        return $"osu!taiko ({name})";
+
+                    case 2:
+                        return $"osu!catch ({name})";
+
+                    case 3:
+                        return $"osu!mania {variant_id}K ({name})";
+
+                    default:
+                        return name;
+                }
+            }
+        }
     }
 }

@@ -68,6 +68,7 @@ namespace osu.Server.Spectator
 
                         options.AddFilter<LoggingHubFilter>();
                         options.AddFilter<ConcurrentConnectionLimiter>();
+                        options.AddFilter<ClientVersionChecker>();
                     })
                     .AddMessagePackProtocol(options =>
                     {

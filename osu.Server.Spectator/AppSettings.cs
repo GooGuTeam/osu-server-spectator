@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 
 namespace osu.Server.Spectator
 {
@@ -23,6 +24,8 @@ namespace osu.Server.Spectator
         #endregion
 
         public static bool TrackBuildUserCounts { get; set; }
+        public static bool ClientCheckVersion { get; set; }
+        public static int[] ClientCheckVersionExemptGroups { get; set; }
 
         public static int ServerPort { get; set; } = 8086;
         public static string RedisHost { get; } = "localhost";
@@ -62,6 +65,7 @@ namespace osu.Server.Spectator
         public static int BanchoBotUserId { get; } = 2;
 
         public static int MatchmakingRoomRounds { get; set; } = 5;
+        public static bool MatchmakingHeadToHeadIsBestOf { get; set; } = true;
         public static bool MatchmakingRoomAllowSkip { get; set; }
         public static TimeSpan MatchmakingLobbyUpdateRate { get; } = TimeSpan.FromSeconds(5);
         public static TimeSpan MatchmakingQueueUpdateRate { get; } = TimeSpan.FromSeconds(1);
@@ -89,6 +93,17 @@ namespace osu.Server.Spectator
             EnableRX = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_RX") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_RX"), out bool enableRX) ? enableRX : EnableRX;
 
             TrackBuildUserCounts = bool.TryParse(Environment.GetEnvironmentVariable("TRACK_BUILD_USER_COUNTS"), out bool trackBuildUserCounts) ? trackBuildUserCounts : TrackBuildUserCounts;
+            ClientCheckVersion = bool.TryParse(Environment.GetEnvironmentVariable("CLIENT_CHECK_VERSION"), out bool clientCheckVersion) ? clientCheckVersion : ClientCheckVersion;
+
+            ClientCheckVersionExemptGroups = Environment.GetEnvironmentVariable("CLIENT_CHECK_VERSION_EXEMPT_GROUPS")?.Split(',')
+                                                        .Select(id =>
+                                                        {
+                                                            bool parsed = int.TryParse(id, out int result);
+                                                            return (parsed, result);
+                                                        })
+                                                        .Where(res => res.parsed)
+                                                        .Select(res => res.result)
+                                                        .ToArray() ?? [];
 
             ServerPort = int.TryParse(Environment.GetEnvironmentVariable("SERVER_PORT"), out int serverPort) ? serverPort : ServerPort;
             RedisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? RedisHost;
@@ -119,6 +134,10 @@ namespace osu.Server.Spectator
             MatchmakingRoomRounds = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ROOM_ROUNDS"), out int mmRounds)
                 ? mmRounds
                 : MatchmakingRoomRounds;
+
+            MatchmakingHeadToHeadIsBestOf = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_HEAD_TO_HEAD_IS_BESTOF"), out bool mmHeadToHeadIsBestOf)
+                ? mmHeadToHeadIsBestOf
+                : MatchmakingHeadToHeadIsBestOf;
 
             MatchmakingRoomAllowSkip = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_ALLOW_SKIP"), out bool mmAllowSkip)
                 ? mmAllowSkip

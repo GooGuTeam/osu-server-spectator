@@ -17,7 +17,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             MatchmakingBeatmapSelector beatmapSelector = new MatchmakingBeatmapSelector(
                 Enumerable.Range(1, 1000).Select(i => new matchmaking_pool_beatmap
                 {
-                    id = i,
+                    id = (uint)i,
                     rating = 1000,
                 }).ToArray())
             {
@@ -37,7 +37,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             MatchmakingBeatmapSelector beatmapSelector = new MatchmakingBeatmapSelector(
                 Enumerable.Range(1, 1000).Select(i => new matchmaking_pool_beatmap
                 {
-                    id = i,
+                    id = (uint)i,
                     rating = 1500,
                 }).ToArray())
             {
@@ -57,7 +57,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             MatchmakingBeatmapSelector beatmapSelector = new MatchmakingBeatmapSelector(
                 Enumerable.Range(1, 1000).Select(i => new matchmaking_pool_beatmap
                 {
-                    id = i,
+                    id = (uint)i,
                     rating = 2000,
                 }).ToArray())
             {
@@ -77,7 +77,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             MatchmakingBeatmapSelector beatmapSelector = new MatchmakingBeatmapSelector(
                 Enumerable.Range(1, 1000).Select(i => new matchmaking_pool_beatmap
                 {
-                    id = i,
+                    id = (uint)i,
                     rating = 1000 + i,
                 }).ToArray())
             {
@@ -94,6 +94,22 @@ namespace osu.Server.Spectator.Tests.Matchmaking
 
             matchmaking_pool_beatmap[] result2 = beatmapSelector.GetAppropriateBeatmaps([new EloRating(1500, 80)]);
             Assert.NotEqual(result.OrderBy(b => b.id), result2.OrderBy(b => b.id));
+        }
+
+        [Fact]
+        public void NoDuplicates()
+        {
+            MatchmakingBeatmapSelector selector = new MatchmakingBeatmapSelector(
+            [
+                new matchmaking_pool_beatmap { id = 0, rating = 1000 },
+                new matchmaking_pool_beatmap { id = 1, rating = 1000 },
+            ]);
+
+            matchmaking_pool_beatmap[] result = selector.GetAppropriateBeatmaps([new EloRating(1000, 350), new EloRating(1000, 350)]);
+
+            Assert.Equal(2, result.Length);
+            Assert.Single(result, t => t.id == 0);
+            Assert.Single(result, t => t.id == 1);
         }
     }
 }

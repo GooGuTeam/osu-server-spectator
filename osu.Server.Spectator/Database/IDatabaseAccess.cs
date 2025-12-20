@@ -30,6 +30,11 @@ namespace osu.Server.Spectator.Database
         Task<string?> GetUsernameAsync(int userId);
 
         /// <summary>
+        /// Returns the IDs of all users in groups with the given <see cref="groupIds"/>.
+        /// </summary>
+        Task<int[]> GetUsersInGroupsAsync(int[] groupIds);
+
+        /// <summary>
         /// Returns the <see cref="multiplayer_room"/> with the given <paramref name="roomId"/>.
         /// </summary>
         Task<multiplayer_room?> GetRoomAsync(long roomId);
@@ -180,12 +185,17 @@ namespace osu.Server.Spectator.Database
         Task<osu_build?> GetBuildByIdAsync(int buildId);
 
         /// <summary>
-        /// Returns all available main builds from the lazer and tachyon release streams.
+        /// Returns a single build with the given <paramref name="hash"/>, if one exists.
+        /// </summary>
+        Task<osu_build?> GetBuildByHashAsync(string hash);
+
+        /// <summary>
+        /// Returns all available main builds from the lazer and tachyon release streams which support online play (<c>allow_bancho</c>).
         /// </summary>
         Task<IEnumerable<osu_build>> GetAllMainLazerBuildsAsync();
 
         /// <summary>
-        /// Returns all known platform-specifc lazer and tachyon builds.
+        /// Returns all known platform-specifc lazer and tachyon builds which support online play (<c>allow_bancho</c>).
         /// </summary>
         Task<IEnumerable<osu_build>> GetAllPlatformSpecificLazerBuildsAsync();
 
@@ -209,6 +219,11 @@ namespace osu.Server.Spectator.Database
         /// Otherwise, returns <see langword="null"/>.
         /// </summary>
         Task<(long roomID, long playlistItemID)?> GetMultiplayerRoomIdForScoreAsync(long scoreId);
+
+        /// <summary>
+        /// Returns whether there has been any score token issued that is associated with the given <paramref name="playlistItemId"/>.
+        /// </summary>
+        Task<bool> AnyScoreTokenExistsFor(long playlistItemId, long roomId);
 
         /// <summary>
         /// Retrieve all scores for a specified playlist item.
@@ -270,7 +285,7 @@ namespace osu.Server.Spectator.Database
         /// <param name="visible">Whether the user should appear online to other players on the website.</param>
         Task ToggleUserPresenceAsync(int userId, bool visible);
 
-        Task<float> GetUserPPAsync(int userId, int rulesetId);
+        Task<float> GetUserPPAsync(int userId, int rulesetId, int variant);
 
         Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync();
 
@@ -278,7 +293,7 @@ namespace osu.Server.Spectator.Database
 
         Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(uint poolId);
 
-        Task IncrementMatchmakingSelectionCount(matchmaking_pool_beatmap[] beatmaps);
+        Task<database_beatmap[]> GetMatchmakingGlobalPoolBeatmapsAsync(int rulesetId, int variant);
 
         Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId);
 

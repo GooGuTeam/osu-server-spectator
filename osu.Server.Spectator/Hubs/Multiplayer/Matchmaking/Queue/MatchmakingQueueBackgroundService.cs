@@ -42,6 +42,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         private static string queue_ban_start_time(int userId) => $"matchmaking-ban-start-time:{userId}";
 
         private readonly ConcurrentDictionary<int, MatchmakingQueue> poolQueues = new ConcurrentDictionary<int, MatchmakingQueue>();
+        private readonly ConcurrentDictionary<uint, MatchmakingBeatmapSelector> poolSelectors = new ConcurrentDictionary<uint, MatchmakingBeatmapSelector>();
 
         private readonly IHubContext<MultiplayerHub> hub;
         private readonly ISharedInterop sharedInterop;
@@ -55,6 +56,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
         private DateTimeOffset lastLobbyUpdateTime = DateTimeOffset.UnixEpoch;
         private DateTimeOffset lastQueueRefreshTime = DateTimeOffset.UnixEpoch;
+        private DateTimeOffset lastPoolRefreshTime = DateTimeOffset.UnixEpoch;
 
         public MatchmakingQueueBackgroundService(IHubContext<MultiplayerHub> hub, ISharedInterop sharedInterop, IDatabaseFactory databaseFactory, ILoggerFactory loggerFactory,
                                                  EntityStore<ServerMultiplayerRoom> rooms, IMultiplayerHubContext hubContext, IMemoryCache memoryCache, MultiplayerEventLogger eventLogger,RulesetManager manager)
@@ -97,12 +99,16 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             using (var db = databaseFactory.GetInstance())
             {
                 matchmaking_pool pool = await db.GetMatchmakingPoolAsync((uint)poolId) ?? throw new InvalidStateException($"Pool not found: {poolId}");
+
+                if (!pool.active)
+                    throw new InvalidStateException("The selected matchmaking pool is no longer active.");
+
                 matchmaking_user_stats? stats = await db.GetMatchmakingUserStatsAsync(state.UserId, (uint)poolId);
 
                 if (stats == null)
                 {
                     // Estimate initial elo from PP.
-                    double pp = await db.GetUserPPAsync(state.UserId, pool.ruleset_id);
+                    double pp = await db.GetUserPPAsync(state.UserId, pool.ruleset_id, pool.variant_id);
                     double eloEstimate = -4000 + 600 * Math.Log(pp + 4000);
 
                     await db.UpdateMatchmakingUserStatsAsync(stats = new matchmaking_user_stats
@@ -112,8 +118,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                         EloData =
                         {
                             InitialRating = new EloRating(eloEstimate),
-                            NormalFactor = new EloRating(eloEstimate),
-                            ApproximatePosterior = new EloRating(eloEstimate)
+                            Rating = new EloRating(eloEstimate)
                         }
                     });
                 }
@@ -121,7 +126,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 MatchmakingQueueUser user = new MatchmakingQueueUser(state.ConnectionId)
                 {
                     UserId = state.UserId,
-                    Rating = stats.EloData.ApproximatePosterior,
+                    Rating = stats.EloData.Rating,
                     QueueBanStartTime = memoryCache.Get<DateTimeOffset?>(queue_ban_start_time(state.UserId)) ?? DateTimeOffset.MinValue
                 };
 
@@ -183,8 +188,15 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 logger.LogError(ex, "Failed to refresh the matchmaking queue.");
             }
 
+            await refreshPools();
+
             foreach ((_, MatchmakingQueue queue) in poolQueues)
             {
+                DogStatsd.Gauge($"{statsd_prefix}.queue.users", queue.Count, tags: [$"queue:{queue.Pool.DisplayName}"]);
+
+                foreach (var user in queue.GetAllUsers())
+                    DogStatsd.Histogram($"{statsd_prefix}.queue.users.rating", user.Rating.Mu, tags: [$"queue:{queue.Pool.DisplayName}"]);
+
                 try
                 {
                     await processBundle(queue.Update());
@@ -200,9 +212,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         {
             if (DateTimeOffset.Now - lastLobbyUpdateTime < lobby_update_rate)
                 return;
-
-            foreach ((_, MatchmakingQueue queue) in poolQueues)
-                DogStatsd.Gauge($"{statsd_prefix}.queue.users", queue.Count, tags: [$"queue:{queue.Pool.name}"]);
 
             MatchmakingQueueUser[] users = poolQueues.Values.SelectMany(queue => queue.GetAllUsers()).ToArray();
             Random.Shared.Shuffle(users);
@@ -226,11 +235,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 foreach ((_, MatchmakingQueue queue) in poolQueues)
                 {
                     matchmaking_pool? newPool = await db.GetMatchmakingPoolAsync(queue.Pool.id);
-                    queue.Refresh(newPool ?? queue.Pool);
+
+                    if (newPool?.active != true)
+                        await processBundle(queue.Clear());
+                    else
+                        queue.Refresh(newPool);
                 }
             }
 
             lastQueueRefreshTime = DateTimeOffset.Now;
+        }
+
+        private Task refreshPools()
+        {
+            if (DateTimeOffset.Now - lastPoolRefreshTime < TimeSpan.FromHours(1))
+                return Task.CompletedTask;
+
+            poolSelectors.Clear();
+
+            lastPoolRefreshTime = DateTimeOffset.Now;
+            return Task.CompletedTask;
         }
 
         private async Task processBundle(MatchmakingQueueUpdateBundle bundle)
@@ -277,7 +301,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 DogStatsd.Increment($"{statsd_prefix}.groups.completed");
 
                 foreach (var user in group.Users)
-                    DogStatsd.Timer($"{statsd_prefix}.queue.duration", (DateTimeOffset.Now - user.SearchStartTime).TotalMilliseconds, tags: [$"queue:{bundle.Queue.Pool.name}"]);
+                    DogStatsd.Timer($"{statsd_prefix}.queue.duration", (DateTimeOffset.Now - user.SearchStartTime).TotalMilliseconds, tags: [$"queue:{bundle.Queue.Pool.DisplayName}"]);
+
+                foreach (double rating in group.DeltaRatings())
+                    DogStatsd.Histogram($"{statsd_prefix}.groups.ratingdelta", rating, tags: [$"queue:{bundle.Queue.Pool.DisplayName}"]);
 
                 string password = Guid.NewGuid().ToString();
                 long roomId = await sharedInterop.CreateRoomAsync(AppSettings.BanchoBotUserId, new MultiplayerRoom(0)
@@ -338,11 +365,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
         private async Task<MultiplayerPlaylistItem[]> queryPlaylistItems(matchmaking_pool pool, EloRating[] ratings)
         {
-            MatchmakingBeatmapSelector selector = await MatchmakingBeatmapSelector.Initialise(pool, databaseFactory);
-            matchmaking_pool_beatmap[] items = selector.GetAppropriateBeatmaps(ratings);
+            if (!poolSelectors.TryGetValue(pool.id, out MatchmakingBeatmapSelector? selector))
+                poolSelectors[pool.id] = selector = await MatchmakingBeatmapSelector.Initialise(pool, databaseFactory);
 
-            using (var db = databaseFactory.GetInstance())
-                await db.IncrementMatchmakingSelectionCount(items);
+            matchmaking_pool_beatmap[] items = selector.GetAppropriateBeatmaps(ratings);
 
             return items.Select(b => new MultiplayerPlaylistItem
             {

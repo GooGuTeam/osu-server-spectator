@@ -287,9 +287,15 @@ namespace SampleMultiplayerClient
             return Task.CompletedTask;
         }
 
-        Task IMultiplayerClient.UserVotedToSkipIntro(int userId)
+        public Task UserVotedToSkipIntro(int userId)
         {
-            Console.WriteLine($"User {userId} voted to skip the beatmap intro");
+            throw new NotImplementedException();
+        }
+
+        Task IMultiplayerClient.UserVotedToSkipIntro(int userId, bool voted)
+        {
+            if (voted)
+                Console.WriteLine($"User {userId} voted to skip the beatmap intro");
             return Task.CompletedTask;
         }
 
