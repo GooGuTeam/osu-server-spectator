@@ -94,6 +94,12 @@ namespace osu.Server.Spectator.Hubs.Metadata
                 ? forwardedForIp.ToString().Split(',').First()
                 // fallback to getting the raw IP.
                 : Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
+            using (var db = databaseFactory.GetInstance())
+            {
+                await db.UpdateUserOnlineStatusAsync(usage.Item!.UserId, true);
+            }
+            redisDatabase.Publish(RedisChannel.Literal("user:online_status"), usage.Item!.UserId);
+            // TODO: update g0v0-server's code to use a better counter for online users.
             redisDatabase.StringSet($"metadata:online:{usage.Item!.UserId}", "metadata", TimeSpan.FromHours(2));
 
             using (var db = databaseFactory.GetInstance())
@@ -268,7 +274,8 @@ namespace osu.Server.Spectator.Hubs.Metadata
         {
             await base.CleanUpState(state);
             using (var db = databaseFactory.GetInstance())
-                await db.OfflineUser(state.UserId);
+                await db.UpdateUserOnlineStatusAsync(state.UserId, false);
+            redisDatabase.Publish(RedisChannel.Literal("user:online_status"), state.UserId);
             redisDatabase.KeyDelete($"metadata:online:{state.UserId}");
             if (shouldBroadcastPresenceToOtherUsers(state))
                 await broadcastUserPresenceUpdate(state.UserId, null);
