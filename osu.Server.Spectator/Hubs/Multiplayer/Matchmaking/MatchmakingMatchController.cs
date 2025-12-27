@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using OpenSkillSharp.Models;
 using OpenSkillSharp.Rating;
-using OpenSkillSharp.Util;
+using osu.Game.Online;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer;
@@ -16,6 +16,7 @@ using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
 using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
 using System.Diagnostics;
 
@@ -145,15 +146,19 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
                 await hub.NotifyPlaylistItemChanged(room, CurrentItem, true);
             }
 
-            Dictionary<int, SoloScore> scores = new Dictionary<int, SoloScore>();
-
+            // Collect all scores from the database.
+            List<SoloScore> scores = [];
             using (var db = dbFactory.GetInstance())
+                scores.AddRange(await db.GetAllScoresForPlaylistItem(room.RoomID, CurrentItem.ID));
+
+            // Add dummy scores for all users that did not play the map.
+            foreach ((int userId, _) in state.Users.UserDictionary)
             {
-                foreach (var score in await db.GetAllScoresForPlaylistItem(room.RoomID, CurrentItem.ID))
-                    scores[(int)score.user_id] = score;
+                if (scores.All(s => s.user_id != userId))
+                    scores.Add(new SoloScore { user_id = (uint)userId });
             }
 
-            state.RecordScores(scores.Values.Select(s => s.ToScoreInfo()).ToArray(), placement_points);
+            state.RecordScores(scores.Select(s => s.ToScoreInfo()).ToArray(), placement_points);
 
             await stageResultsDisplaying();
         }
@@ -378,25 +383,16 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
             using (var db = dbFactory.GetInstance())
             {
-                PlackettLuce model = new PlackettLuce
-                {
-                    Mu = 1500,
-                    Sigma = 350,
-                    Beta = 175,
-                    Tau = 3.5
-                };
+                PlackettLuce model = new PlackettLuce { Mu = 1500, Sigma = 350, Beta = 175, Tau = 3.5 };
 
                 List<matchmaking_user_stats> stats = [];
                 List<ITeam> teams = [];
                 List<double> ranks = [];
+                int rankIndex = -1;
 
-                foreach ((int rankIndex, MatchmakingUser user) in state.Users.Where(u => u.Points > 0).OrderBy(u => u.Placement).Index())
+                foreach (MatchmakingUser user in state.Users.Where(u => u.Points > 0).OrderBy(u => u.Placement))
                 {
-                    matchmaking_user_stats userStats = await db.GetMatchmakingUserStatsAsync(user.UserId, PoolId) ?? new matchmaking_user_stats
-                    {
-                        user_id = (uint)user.UserId,
-                        pool_id = PoolId
-                    };
+                    matchmaking_user_stats userStats = await db.GetMatchmakingUserStatsAsync(user.UserId, PoolId) ?? new matchmaking_user_stats { user_id = (uint)user.UserId, pool_id = PoolId };
 
                     if (user.Placement == 1)
                         userStats.first_placements++;
@@ -404,7 +400,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
                     stats.Add(userStats);
                     teams.Add(new Team { Players = [model.Rating(userStats.EloData.Rating.Mu, userStats.EloData.Rating.Sig)] });
-                    ranks.Add(rankIndex);
+                    ranks.Add(++rankIndex);
                 }
 
                 ITeam[] newRatings = model.Rate(teams, ranks).ToArray();
@@ -440,11 +436,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
         private async Task startCountdown(TimeSpan duration, Func<ServerMultiplayerRoom, Task> continuation)
         {
-            await room.StartCountdown(new MatchmakingStageCountdown
-            {
-                Stage = state.Stage,
-                TimeRemaining = duration
-            }, continuation);
+            await room.StartCountdown(new MatchmakingStageCountdown { Stage = state.Stage, TimeRemaining = duration }, continuation);
         }
 
         private async Task updateStageFromUserStateChange()
@@ -464,7 +456,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
 
         private bool allUsersReady()
         {
-            return room.Users.All(u => u.State == MultiplayerUserState.Ready);
+            return room.Users.All(u => u.IsReadyForGameplay());
         }
 
         private bool hasEnoughUsersForGameplay()
@@ -473,7 +465,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
                 // Special case for testing in solo play.
                 (room.Users.Count == 1 && allUsersReady())
                 // Otherwise, always require at least two ready users.
-                || room.Users.Count(u => u.State == MultiplayerUserState.Ready) >= 2;
+                || room.Users.Count(u => u.IsReadyForGameplay()) >= 2;
         }
 
         /// <summary>
@@ -518,9 +510,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             return state.Users.Any(u => u.Rounds.Count(r => r.Placement == 1) == requiredWins);
         }
 
-        public MatchStartedEventDetail GetMatchDetails() => new MatchStartedEventDetail
-        {
-            room_type = database_match_type.matchmaking
-        };
+        public MatchStartedEventDetail GetMatchDetails() => new MatchStartedEventDetail { room_type = database_match_type.matchmaking };
     }
 }
