@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using OpenSkillSharp.Models;
 using OpenSkillSharp.Rating;
-using osu.Game.Online;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer;
