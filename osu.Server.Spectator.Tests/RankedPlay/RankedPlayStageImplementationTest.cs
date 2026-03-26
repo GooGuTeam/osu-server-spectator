@@ -42,9 +42,9 @@ namespace osu.Server.Spectator.Tests.RankedPlay
                     .Callback<long>(roomId => InitialiseRoom(roomId, 20))
                     .ReturnsAsync(() => new multiplayer_room
                     {
-                        type = database_match_type.ranked_play,
+                        type = database_match_type.matchmaking,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        user_id = int.Parse(Hub.Context.UserIdentifier!),
+                        host_id = int.Parse(Hub.Context.UserIdentifier!),
                     });
 
             Database.Setup(db => db.GetMatchmakingUserStatsAsync(It.IsAny<int>(), It.IsAny<uint>()))
@@ -65,7 +65,8 @@ namespace osu.Server.Spectator.Tests.RankedPlay
                     {
                         id = (uint)i,
                         beatmap_id = i
-                    }).ToArray()));
+                    }).ToArray()),
+                    RulesetManager);
 
                 Room = room.Item;
             }

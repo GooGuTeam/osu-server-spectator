@@ -14,6 +14,7 @@ using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Hubs.Metadata;
 using osu.Server.Spectator.Hubs.Spectator;
+using StackExchange.Redis;
 using Xunit;
 
 namespace osu.Server.Spectator.Tests
@@ -42,13 +43,17 @@ namespace osu.Server.Spectator.Tests
             loggerFactoryMock.Setup(factory => factory.CreateLogger(It.IsAny<string>()))
                              .Returns(new Mock<ILogger>().Object);
 
+            var mockRedis = new Mock<IConnectionMultiplexer>();
+            mockRedis.Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(new Mock<IDatabase>().Object);
+
             hub = new MetadataHub(
                 loggerFactoryMock.Object,
                 new MemoryCache(new MemoryCacheOptions()),
                 userStates,
                 databaseFactory.Object,
                 new Mock<IDailyChallengeUpdater>().Object,
-                new Mock<IScoreProcessedSubscriber>().Object);
+                new Mock<IScoreProcessedSubscriber>().Object,
+                mockRedis.Object);
 
             mockWatchersGroup = new Mock<IMetadataClient>();
             mockCaller = new Mock<IMetadataClient>();

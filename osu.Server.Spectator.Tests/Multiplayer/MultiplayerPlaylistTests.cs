@@ -125,7 +125,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                     {
                         type = database_match_type.head_to_head,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        user_id = USER_ID,
+                        host_id = USER_ID,
                         queue_mode = database_queue_mode.all_players
                     });
 
@@ -551,7 +551,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
         public async Task PlaylistItemsWithScoreTokenInDatabaseCannotBeRemoved()
         {
             Database.Setup(d => d.GetBeatmapAsync(3333)).ReturnsAsync(new database_beatmap { checksum = "3333" });
-            Database.Setup(d => d.AnyScoreTokenExistsFor(1)).ReturnsAsync(true);
+            Database.Setup(d => d.AnyScoreTokenExistsFor(It.IsAny<long>(), It.IsAny<long>())).ReturnsAsync(true);
 
             await Hub.JoinRoom(ROOM_ID);
             await Hub.ChangeSettings(new MultiplayerRoomSettings { QueueMode = QueueMode.AllPlayers });

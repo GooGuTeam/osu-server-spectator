@@ -20,6 +20,7 @@ using osu.Server.Spectator.Hubs.Multiplayer;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Referee;
 using osu.Server.Spectator.Services;
+using StackExchange.Redis;
 
 namespace osu.Server.Spectator.Tests.Multiplayer
 {
@@ -46,6 +47,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
         protected readonly Mock<ISharedInterop> LegacyIO;
         protected readonly MultiplayerEventDispatcher EventDispatcher;
         protected Mock<ILoggerFactory> LoggerFactory;
+        protected readonly RulesetManager RulesetManager;
 
         /// <summary>
         /// A general non-gameplay receiver for the room with ID <see cref="ROOM_ID"/>.
@@ -160,6 +162,11 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             LegacyIO.Setup(io => io.CreateRoomAsync(It.IsAny<int>(), It.IsAny<MultiplayerRoom>(), It.IsAny<bool>()))
                     .Returns<int, MultiplayerRoom, bool>((_, room, _) => Task.FromResult(room.RoomID));
 
+            RulesetManager = new RulesetManager(
+                new Mock<ILogger<RulesetManager>>().Object,
+                new MemoryCache(new MemoryCacheOptions()),
+                LegacyIO.Object);
+
             EventDispatcher = new MultiplayerEventDispatcher(
                 DatabaseFactory.Object,
                 multiplayerHubContext.Object,
@@ -173,7 +180,8 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 DatabaseFactory.Object,
                 EventDispatcher,
                 LoggerFactory.Object,
-                LegacyIO.Object);
+                LegacyIO.Object,
+                RulesetManager);
 
             MatchmakingBackgroundService = new MatchmakingQueueBackgroundService(
                 multiplayerHubContext.Object,
@@ -183,7 +191,8 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 Rooms,
                 RoomController,
                 new MemoryCache(new MemoryCacheOptions()),
-                EventDispatcher);
+                EventDispatcher,
+                RulesetManager);
 
             Hub = new TestMultiplayerHub(
                 LoggerFactory.Object,
@@ -279,7 +288,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                     {
                         type = database_match_type.head_to_head,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        user_id = int.Parse(Hub.Context.UserIdentifier!),
+                        host_id = int.Parse(Hub.Context.UserIdentifier!),
                     });
 
             Database.Setup(db => db.GetRealtimeRoomAsync(ROOM_ID_2))
@@ -288,7 +297,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                     {
                         type = database_match_type.head_to_head,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        user_id = int.Parse(Hub.Context.UserIdentifier!)
+                        host_id = int.Parse(Hub.Context.UserIdentifier!)
                     });
 
             Database.Setup(db => db.GetBeatmapAsync(It.IsAny<int>()))
