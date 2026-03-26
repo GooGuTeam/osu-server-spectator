@@ -174,7 +174,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
 
                 item.EnsureModsValid();
                 item.OwnerID = user.UserID;
-                item.StarRating = beatmap.difficultyrating;
+                item.StarRating = beatmap.difficulty_rating;
 
                 await addItem(db, item);
                 if (room.State == MultiplayerRoomState.Open)
@@ -205,7 +205,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
 
                 item.EnsureModsValid();
                 item.OwnerID = user.UserID;
-                item.StarRating = beatmap.difficultyrating;
+                item.StarRating = beatmap.difficulty_rating;
 
                 var existingItem = room.Playlist.SingleOrDefault(i => i.ID == item.ID);
 
@@ -266,7 +266,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
 
             using (var db = dbFactory.GetInstance())
             {
-                if (await db.AnyScoreTokenExistsFor(playlistItemId))
+                if (await db.AnyScoreTokenExistsFor(playlistItemId, room.RoomID))
                     throw new InvalidStateException("Attempted to remove an item which has already been played.");
 
                 await db.RemovePlaylistItemAsync(room.RoomID, playlistItemId);

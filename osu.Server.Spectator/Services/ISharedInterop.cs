@@ -1,8 +1,11 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using osu.Game.Online.Multiplayer;
+using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Hubs.Referee;
 
 namespace osu.Server.Spectator.Services
@@ -41,5 +44,20 @@ namespace osu.Server.Spectator.Services
         /// <param name="userId">The ID of the user wanting to part the room.</param>
         /// <param name="roomId">The ID of the room to part.</param>
         Task RemoveUserFromRoomAsync(int userId, long roomId);
+
+        /// <summary>
+        /// Ensures a beatmap is present in the database by requesting the server to fetch it if missing.
+        /// </summary>
+        Task EnsureBeatmapPresentAsync(int beatmapId);
+
+        /// <summary>
+        /// Uploads a replay to the server.
+        /// </summary>
+        void UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream);
+
+        /// <summary>
+        /// Retrieves the ruleset hashes from the server.
+        /// </summary>
+        Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync();
     }
 }

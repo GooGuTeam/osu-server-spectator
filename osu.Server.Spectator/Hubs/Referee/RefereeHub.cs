@@ -459,7 +459,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                         RulesetID = request.RulesetId,
                         RequiredMods = request.RequiredMods.Select(mod => mod.ToAPIMod()).ToArray(),
                         AllowedMods = request.AllowedMods.Select(mod => mod.ToAPIMod()).ToArray(),
-                        StarRating = beatmap.difficultyrating,
+                        StarRating = beatmap.difficulty_rating,
                         Freestyle = request.Freestyle,
                     };
 
@@ -566,7 +566,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                 // but client doesn't really try to do any better
                 // (https://github.com/ppy/osu/blob/815bf9c37bc920231bd024636d4690914f396793/osu.Game/Online/Rooms/MultiplayerPlaylistItem.cs#L105),
                 // so this is probably fine for now
-                StarRating = newBeatmap.difficultyrating,
+                StarRating = newBeatmap.difficulty_rating,
                 Freestyle = request.Freestyle ?? oldPlaylistItem.Freestyle,
             };
 

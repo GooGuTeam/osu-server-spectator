@@ -7,8 +7,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using OpenSkillSharp.Models;
 using OpenSkillSharp.Rating;
+using osu.Game.Online.API;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer;
@@ -132,7 +134,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             {
                 foreach (var beatmap in beatmapSelector.GetAppropriateBeatmaps(users.Select(u => u.Rating).ToArray()))
                 {
-                    MultiplayerPlaylistItem item = beatmap.ToPlaylistItem();
+                    MultiplayerPlaylistItem item = new MultiplayerPlaylistItem
+                    {
+                        BeatmapID = beatmap.beatmap_id,
+                        BeatmapChecksum = beatmap.checksum!,
+                        RulesetID = beatmapSelector.Pool?.ruleset_id ?? 0,
+                        StarRating = beatmap.difficulty_rating,
+                        RequiredMods = JsonConvert.DeserializeObject<APIMod[]>(beatmap.mods ?? string.Empty) ?? [],
+                    };
                     item.ID = await db.AddPlaylistItemAsync(new multiplayer_playlist_item(room.RoomID, item));
                     room.Playlist.Add(item);
                 }
@@ -165,7 +174,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             // Collect all scores from the database.
             List<SoloScore> scores = [];
             using (var db = dbFactory.GetInstance())
-                scores.AddRange(await db.GetAllScoresForPlaylistItem(CurrentItem.ID));
+                scores.AddRange(await db.GetAllScoresForPlaylistItem(room.RoomID, CurrentItem.ID));
 
             // Add dummy scores for all users that did not play the map.
             foreach ((int userId, _) in state.Users.UserDictionary)

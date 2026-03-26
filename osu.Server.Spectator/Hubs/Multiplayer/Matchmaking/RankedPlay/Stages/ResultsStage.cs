@@ -26,7 +26,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
             // Collect all scores from the database.
             List<SoloScore> scores = [];
             using (var db = DbFactory.GetInstance())
-                scores.AddRange(await db.GetAllScoresForPlaylistItem(Room.Settings.PlaylistItemId));
+                scores.AddRange(await db.GetAllScoresForPlaylistItem(Room.RoomID, Room.Settings.PlaylistItemId));
 
             // Add dummy scores for all users that did not play the map.
             foreach ((int userId, _) in State.Users)

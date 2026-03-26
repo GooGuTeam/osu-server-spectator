@@ -556,7 +556,7 @@ namespace osu.Server.Spectator.Database
         {
             return Task.FromResult<osu_build?>(new osu_build
             {
-                build_id = buildId,
+                build_id = (uint)buildId,
                 allow_bancho = true,
                 hash = null,
                 users = 0,
