@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -17,10 +18,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         public long? CurrentRoomID { get; private set; }
 
+        public Dictionary<string, string> RulesetHashes;
+
         [JsonConstructor]
-        public MultiplayerClientState(in string connectionId, in int userId)
+        public MultiplayerClientState(in string connectionId, in int userId, in long? currentRoomID = null, in Dictionary<string, string>? rulesetHashes = null)
             : base(connectionId, userId)
         {
+            CurrentRoomID = currentRoomID;
+            RulesetHashes = rulesetHashes ?? new Dictionary<string, string>();
         }
 
         int IMultiplayerUserState.UserId => UserId;

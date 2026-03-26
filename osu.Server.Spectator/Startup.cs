@@ -2,6 +2,8 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Data;
+using Dapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -22,6 +24,33 @@ using osu.Server.Spectator.Hubs.Spectator;
 
 namespace osu.Server.Spectator
 {
+    public class PlaymodeTypeHandler : SqlMapper.TypeHandler<ushort>
+    {
+        public override void SetValue(IDbDataParameter parameter, ushort value)
+        {
+            parameter.Value = (int)value;
+        }
+
+        public override ushort Parse(object value)
+        {
+            return value switch
+            {
+                string s when s == "osu" => 0,
+                string s when s == "taiko" => 1,
+                string s when s == "fruits" => 2,
+                string s when s == "mania" => 3,
+                string s when s == "osurx" => 4,
+                string s when s == "osuap" => 5,
+                string s when s == "taikorx" => 6,
+                string s when s == "fruitsrx" => 7,
+                string s => ushort.TryParse(s, out ushort result) ? result : (ushort)0,
+                int i => (ushort)i,
+                long l => (ushort)l,
+                _ => Convert.ToUInt16(value)
+            };
+        }
+    }
+
     public class Startup
     {
         // This method gets called by the runtime. Use this method to add services to the container.
@@ -61,6 +90,8 @@ namespace osu.Server.Spectator
                     .AddDatabaseServices()
                     .AddMemoryCache();
 
+            SqlMapper.AddTypeHandler(new PlaymodeTypeHandler());
+
             services.AddDistributedMemoryCache(); // replace with redis
 
             services.AddLogging(logging =>
@@ -95,9 +126,8 @@ namespace osu.Server.Spectator
                         config.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                         config.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                     })
-                    .AddJwtBearer();
+                    .AddJwtBearer(); // options will be injected through DI, via the singleton registration above.
             services.AddAuthorization();
-            services.AddSingleton<IUserIdProvider, JwtUserIdProvider>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

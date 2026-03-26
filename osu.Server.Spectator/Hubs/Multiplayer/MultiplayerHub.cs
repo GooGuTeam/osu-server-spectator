@@ -7,7 +7,11 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
+using Newtonsoft.Json;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.Countdown;
@@ -57,8 +61,24 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             await base.OnConnectedAsync();
 
+            Dictionary<string, string> rulesetHashes = new Dictionary<string, string>();
+
             using (var usage = await GetOrCreateLocalUserState())
-                usage.Item = new MultiplayerClientState(Context.ConnectionId, Context.GetUserId());
+            {
+                if (Context.GetHttpContext()?.Request.Headers.TryGetValue(HubClientConnector.RULESET_HASH_HEADER, out StringValues headerValue) == true)
+                {
+                    Dictionary<string, string>? parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(headerValue.ToString());
+
+                    if (parsed != null)
+                    {
+                        rulesetHashes = parsed;
+                    }
+                }
+
+                Log("Connected with ruleset hashes: " + string.Join(", ", rulesetHashes.Select(kvp => $"{kvp.Key}: {kvp.Value}")));
+
+                usage.Item = new MultiplayerClientState(Context.ConnectionId, Context.GetUserId(), rulesetHashes: rulesetHashes);
+            }
         }
 
         public async Task<MultiplayerRoom> CreateRoom(MultiplayerRoom room)

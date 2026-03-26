@@ -19,6 +19,9 @@ using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
+using osu.Server.Spectator.Helpers;
+using osu.Server.Spectator.Services;
+using StackExchange.Redis;
 
 namespace osu.Server.Spectator.Hubs.Spectator
 {
@@ -38,18 +41,24 @@ namespace osu.Server.Spectator.Hubs.Spectator
         private readonly IDatabaseFactory databaseFactory;
         private readonly ScoreUploader scoreUploader;
         private readonly IScoreProcessedSubscriber scoreProcessedSubscriber;
+        private readonly RulesetManager manager;
+        private readonly IConnectionMultiplexer redis;
 
         public SpectatorHub(
             ILoggerFactory loggerFactory,
             EntityStore<SpectatorClientState> users,
             IDatabaseFactory databaseFactory,
             ScoreUploader scoreUploader,
-            IScoreProcessedSubscriber scoreProcessedSubscriber)
+            IScoreProcessedSubscriber scoreProcessedSubscriber,
+            RulesetManager manager,
+            IConnectionMultiplexer redis)
             : base(loggerFactory, users)
         {
             this.databaseFactory = databaseFactory;
             this.scoreUploader = scoreUploader;
             this.scoreProcessedSubscriber = scoreProcessedSubscriber;
+            this.manager = manager;
+            this.redis = redis;
         }
 
         public async Task BeginPlaySession(long? scoreToken, SpectatorState state)
@@ -77,7 +86,7 @@ namespace osu.Server.Spectator.Hubs.Spectator
 
                 using (var db = databaseFactory.GetInstance())
                 {
-                    database_beatmap? beatmap = await db.GetBeatmapAsync(state.BeatmapID.Value);
+                    database_beatmap? beatmap = await db.GetBeatmapOrFetchAsync(state.BeatmapID.Value);
                     string? username = await db.GetUsernameAsync(userId);
 
                     if (string.IsNullOrEmpty(username))
@@ -97,7 +106,7 @@ namespace osu.Server.Spectator.Hubs.Spectator
                                 Id = userId,
                                 Username = username,
                             },
-                            Ruleset = LegacyHelper.GetRulesetFromLegacyID(state.RulesetID.Value).RulesetInfo,
+                            Ruleset = manager.GetRuleset(state.RulesetID.Value).RulesetInfo,
                             BeatmapInfo = new BeatmapInfo
                             {
                                 OnlineID = state.BeatmapID.Value,
@@ -157,6 +166,13 @@ namespace osu.Server.Spectator.Hubs.Spectator
                         return;
 
                     await processScore(usage.Item!);
+
+                    int exitTime = (int)Math.Round((score.Replay.Frames.LastOrDefault()?.Time ?? 0) / 1000);
+
+                    if (state.State == SpectatedUserState.Failed || state.State == SpectatedUserState.Quit)
+                        await processFailtime(usage.Item!, exitTime, state);
+
+                    await editPlayTime(usage.Item!, exitTime);
                 }
                 finally
                 {
@@ -180,9 +196,15 @@ namespace osu.Server.Spectator.Hubs.Spectator
             Score score = item.Score;
             long scoreToken = item.ScoreToken.Value;
 
-            // Do nothing with scores on unranked beatmaps.
-            var status = score.ScoreInfo.BeatmapInfo!.Status;
-            if (status < min_beatmap_status_for_replays || status > max_beatmap_status_for_replays)
+            if (!AppSettings.EnableAllBeatmapLeaderboard)
+            {
+                // Do nothing with scores on unranked beatmaps.
+                var status = score.ScoreInfo.BeatmapInfo!.Status;
+                if (status < min_beatmap_status_for_replays || status > max_beatmap_status_for_replays)
+                    return;
+            }
+
+            if (!score.ScoreInfo.Passed)
                 return;
 
             // if the user never hit anything, further processing that depends on the score existing can be waived because the client won't have submitted the score anyway.
@@ -197,6 +219,75 @@ namespace osu.Server.Spectator.Hubs.Spectator
 
             await scoreUploader.EnqueueAsync(scoreToken, score, item.Beatmap);
             await scoreProcessedSubscriber.RegisterForSingleScoreAsync(Context.ConnectionId, Context.GetUserId(), scoreToken);
+        }
+
+        private async Task processFailtime(SpectatorClientState item, int exitTime, SpectatorState state)
+        {
+            Debug.Assert(item.Beatmap != null && item.Score != null);
+
+            int beatmapId = item.Beatmap.beatmap_id;
+            int totalLength = item.Beatmap.total_length;
+
+            if (totalLength <= 0 || exitTime <= 0)
+                return;
+
+            int numSections = 100;
+            double sectionLength = (double)totalLength / numSections;
+
+            int sectionIndex = (int)Math.Min(Math.Floor(exitTime / sectionLength), numSections - 1);
+
+            using (var db = databaseFactory.GetInstance())
+            {
+                var failTime = await db.GetBeatmapFailTimeAsync(beatmapId);
+
+                if (failTime == null)
+                {
+                    failTime = new fail_time
+                    {
+                        beatmap_id = beatmapId,
+                        exit = new byte[numSections * 4],
+                        fail = new byte[numSections * 4],
+                    };
+                }
+
+                int[] exitArray = BlobHelper.ParseBlobToIntArray(failTime.exit);
+                int[] failArray = BlobHelper.ParseBlobToIntArray(failTime.fail);
+
+                if (exitArray.Length < numSections || failArray.Length < numSections)
+                    return;
+
+                if (state.State == SpectatedUserState.Quit)
+                    exitArray[sectionIndex]++;
+                else if (state.State == SpectatedUserState.Failed)
+                    failArray[sectionIndex]++;
+
+                failTime.exit = BlobHelper.IntArrayToBlob(exitArray);
+                failTime.fail = BlobHelper.IntArrayToBlob(failArray);
+
+                await db.UpdateFailTimeAsync(failTime);
+            }
+        }
+
+        private async Task editPlayTime(SpectatorClientState item, int exitTime)
+        {
+            Debug.Assert(item.Score != null && item.State != null);
+
+            if (exitTime <= 0)
+                return;
+
+            int userId = item.Score.ScoreInfo.UserID;
+            var ruleset = item.Score.ScoreInfo.Ruleset;
+            string gameMode = GameModeHelper.GameModeToStringSpecial(ruleset, item.Score.ScoreInfo.APIMods);
+
+            using (var db = databaseFactory.GetInstance())
+            {
+                int? currentPlayTime = await db.GetUserPlaytimeAsync(gameMode, userId);
+
+                if (currentPlayTime == null)
+                    return;
+
+                await db.UpdateUserPlaytimeAsync(gameMode, userId, currentPlayTime.Value + exitTime);
+            }
         }
 
         public async Task StartWatchingUser(int userId)

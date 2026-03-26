@@ -172,7 +172,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(room.RulesetManager);
                 item.OwnerID = user.UserID;
                 item.StarRating = beatmap.difficulty_rating;
 
@@ -203,7 +203,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(room.RulesetManager);
                 item.OwnerID = user.UserID;
                 item.StarRating = beatmap.difficulty_rating;
 

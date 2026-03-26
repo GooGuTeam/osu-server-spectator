@@ -38,6 +38,7 @@ namespace osu.Server.Spectator.Hubs.Referee
         private readonly EntityStore<RefereeClientState> refereeStates;
         private readonly EntityStore<MultiplayerClientState> playerStates;
         private readonly ChatFilters chatFilters;
+        private readonly RulesetManager rulesetManager;
 
         public RefereeHub(
             IDatabaseFactory databaseFactory,
@@ -47,7 +48,8 @@ namespace osu.Server.Spectator.Hubs.Referee
             MultiplayerEventDispatcher eventDispatcher,
             EntityStore<RefereeClientState> refereeStates,
             EntityStore<MultiplayerClientState> playerStates,
-            ChatFilters chatFilters)
+            ChatFilters chatFilters,
+            RulesetManager rulesetManager)
         {
             this.databaseFactory = databaseFactory;
             logger = loggerFactory.CreateLogger<RefereeHub>();
@@ -57,6 +59,7 @@ namespace osu.Server.Spectator.Hubs.Referee
             this.refereeStates = refereeStates;
             this.playerStates = playerStates;
             this.chatFilters = chatFilters;
+            this.rulesetManager = rulesetManager;
         }
 
         public override async Task OnConnectedAsync()
@@ -463,7 +466,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                         Freestyle = request.Freestyle,
                     };
 
-                    ensurePlaylistItemValid(newPlaylistItem, beatmap);
+                    ensurePlaylistItemValid(newPlaylistItem, beatmap, rulesetManager);
 
                     await roomUsage.Item.AddPlaylistItem(Context.GetUserId(), newPlaylistItem);
                 }
@@ -570,11 +573,11 @@ namespace osu.Server.Spectator.Hubs.Referee
                 Freestyle = request.Freestyle ?? oldPlaylistItem.Freestyle,
             };
 
-            ensurePlaylistItemValid(newPlaylistItem, newBeatmap);
+            ensurePlaylistItemValid(newPlaylistItem, newBeatmap, rulesetManager);
             return newPlaylistItem;
         }
 
-        private static void ensurePlaylistItemValid(MultiplayerPlaylistItem playlistItem, database_beatmap beatmap)
+        private static void ensurePlaylistItemValid(MultiplayerPlaylistItem playlistItem, database_beatmap beatmap, RulesetManager rulesetMgr)
         {
             if (playlistItem.RulesetID < 0 || playlistItem.RulesetID > ILegacyRuleset.MAX_LEGACY_RULESET_ID)
                 ThrowHelper.ThrowInvalidRuleset();
@@ -587,7 +590,7 @@ namespace osu.Server.Spectator.Hubs.Referee
 
             try
             {
-                playlistItem.EnsureModsValid();
+                playlistItem.EnsureModsValid(rulesetMgr);
             }
             catch (Exception ex)
             {

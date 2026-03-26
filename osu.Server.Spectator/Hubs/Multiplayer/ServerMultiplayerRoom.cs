@@ -23,6 +23,7 @@ using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay;
 using osu.Server.Spectator.Hubs.Multiplayer.Standard;
+using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
@@ -34,6 +35,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly IDatabaseFactory dbFactory;
         private readonly MultiplayerEventDispatcher eventDispatcher;
         private readonly ILogger<ServerMultiplayerRoom> logger;
+        internal readonly RulesetManager RulesetManager;
 
         public IReadOnlySet<int> BannedUsers => bannedUsers;
         private readonly HashSet<int> bannedUsers = [];
@@ -43,13 +45,15 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             IMultiplayerRoomController roomController,
             IDatabaseFactory dbFactory,
             MultiplayerEventDispatcher eventDispatcher,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            RulesetManager rulesetManager)
             : base(roomId)
         {
             this.roomController = roomController;
             this.dbFactory = dbFactory;
             this.eventDispatcher = eventDispatcher;
             logger = loggerFactory.CreateLogger<ServerMultiplayerRoom>();
+            RulesetManager = rulesetManager;
         }
 
         /// <summary>
@@ -69,9 +73,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             IMultiplayerRoomController roomController,
             IDatabaseFactory dbFactory,
             MultiplayerEventDispatcher eventDispatcher,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            RulesetManager rulesetManager)
         {
-            ServerMultiplayerRoom room = new ServerMultiplayerRoom(roomId, roomController, dbFactory, eventDispatcher, loggerFactory);
+            ServerMultiplayerRoom room = new ServerMultiplayerRoom(roomId, roomController, dbFactory, eventDispatcher, loggerFactory, rulesetManager);
 
             // TODO: this call should be transactional, and mark the room as managed by this server instance.
             // This will allow for other instances to know not to reinitialise the room if the host arrives there.
@@ -125,9 +130,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <exception cref="InvalidOperationException">If the room is not a matchmaking room in the database.</exception>
         public static async Task<ServerMultiplayerRoom> InitialiseMatchmakingRoomAsync(long roomId, IMultiplayerRoomController roomController, IDatabaseFactory dbFactory,
                                                                                        MultiplayerEventDispatcher eventDispatcher, ILoggerFactory loggerFactory,
-                                                                                       uint poolId, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector)
+                                                                                       uint poolId, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector, RulesetManager rulesetManager)
         {
-            ServerMultiplayerRoom room = await InitialiseAsync(roomId, roomController, dbFactory, eventDispatcher, loggerFactory);
+            ServerMultiplayerRoom room = await InitialiseAsync(roomId, roomController, dbFactory, eventDispatcher, loggerFactory, rulesetManager);
 
             if (room.MatchController is not IMatchmakingMatchController matchmakingController)
                 throw new InvalidOperationException("Failed to initialise the matchmaking room (invalid controller).");
@@ -656,7 +661,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             user.BeatmapId = beatmapId;
             user.RulesetId = rulesetId;
 
-            if (!MatchController.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods))
+            if (!MatchController.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods, RulesetManager))
             {
                 user.Mods = validMods.ToArray();
                 await eventDispatcher.PostUserModsChangedAsync(RoomID, user.UserID, user.Mods);
@@ -688,7 +693,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             var newModList = newMods.ToList();
 
-            if (!MatchController.CurrentItem.ValidateUserMods(user, newModList, out var validMods))
+            if (!MatchController.CurrentItem.ValidateUserMods(user, newModList, out var validMods, RulesetManager))
                 throw new InvalidStateException($"Incompatible mods were selected: {string.Join(',', newModList.Except(validMods).Select(m => m.Acronym))}");
 
             if (user.Mods.SequenceEqual(newModList))
@@ -741,7 +746,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             foreach (var user in Users)
             {
-                if (!MatchController.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods))
+                if (!MatchController.CurrentItem.ValidateUserMods(user, user.Mods, out var validMods, RulesetManager))
                     await changeUserMods(user, validMods);
             }
         }
