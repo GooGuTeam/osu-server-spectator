@@ -19,8 +19,6 @@ namespace osu.Server.Spectator.Database.Models
         // Matchmaking: quick Play
         matchmaking,
 
-        // Matchmaking: ranked play
-        ranked_play
     }
 
     public static class DatabaseMatchTypeExtensions
@@ -40,9 +38,6 @@ namespace osu.Server.Spectator.Database.Models
 
                 case database_match_type.matchmaking:
                     return MatchType.Matchmaking;
-
-                case database_match_type.ranked_play:
-                    return MatchType.RankedPlay;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
@@ -64,9 +59,6 @@ namespace osu.Server.Spectator.Database.Models
 
                 case MatchType.Matchmaking:
                     return database_match_type.matchmaking;
-
-                case MatchType.RankedPlay:
-                    return database_match_type.ranked_play;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));

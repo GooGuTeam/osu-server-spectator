@@ -48,7 +48,7 @@ namespace osu.Server.Spectator.Database.Models
         /// <summary>
         /// The beatmap difficulty rating.
         /// </summary>
-        public double difficultyrating { get; set; }
+        public double difficulty_rating { get; set; }
 
         // for deserialization
         public multiplayer_playlist_item()
@@ -91,7 +91,7 @@ namespace osu.Server.Spectator.Database.Models
                 Expired = expired,
                 PlaylistOrder = playlist_order ?? 0,
                 PlayedAt = played_at,
-                StarRating = difficultyrating
+                StarRating = difficulty_rating
             };
             return playlistItem;
         }
