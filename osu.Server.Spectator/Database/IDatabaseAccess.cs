@@ -20,12 +20,6 @@ namespace osu.Server.Spectator.Database
         Task<int?> GetUserIdFromTokenAsync(JsonWebToken jwtToken);
 
         /// <summary>
-        /// Returns the database ID of the owner of an OAuth client to which the supplied <paramref name="jwtToken"/> delegates permissions to.
-        /// Will be <c>null</c> if the token does not exist, has expired, has been revoked, or is not allowed to perform delegation.
-        /// </summary>
-        Task<int?> GetDelegatedResourceOwnerIdFromTokenAsync(JsonWebToken jwtToken);
-
-        /// <summary>
         /// Whether the user with the given <paramref name="userId"/> is currently restricted.
         /// </summary>
         Task<bool> IsUserRestrictedAsync(int userId);
@@ -225,32 +219,73 @@ namespace osu.Server.Spectator.Database
         Task<(long roomID, long playlistItemID)?> GetMultiplayerRoomIdForScoreAsync(long scoreId);
 
         /// <summary>
-        /// Returns whether there has been any score token issued that is associated with the given <paramref name="playlistItemId"/>.
+        /// Returns whether there has been any score token issued that is associated with the given <paramref name="playlistItemId"/>
+        /// in the room with the given <paramref name="roomId"/>.
         /// </summary>
-        Task<bool> AnyScoreTokenExistsFor(long playlistItemId);
+        Task<bool> AnyScoreTokenExistsFor(long playlistItemId, long roomId);
 
         /// <summary>
         /// Retrieve all scores for a specified playlist item.
         /// </summary>
+        /// <param name="roomId">The room.</param>
         /// <param name="playlistItemId">The playlist item.</param>
-        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long playlistItemId);
+        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId);
 
         /// <summary>
         /// Retrieve all passing scores for a specified playlist item.
         /// </summary>
+        /// <param name="roomId">The room.</param>
         /// <param name="playlistItemId">The playlist item.</param>
         /// <param name="afterScoreId">An optional score ID to only fetch newer scores.</param>
-        Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long playlistItemId, ulong afterScoreId = 0);
+        Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long roomId, long playlistItemId, ulong afterScoreId = 0);
 
         /// <summary>
-        /// Returns the best score of user with <paramref name="userId"/> on the playlist item with <paramref name="playlistItemId"/>.
+        /// Returns the best score of user with <paramref name="userId"/> on the playlist item with <paramref name="playlistItemId"/>
+        /// in the room with the given <paramref name="roomId"/>.
         /// </summary>
-        Task<multiplayer_scores_high?> GetUserBestScoreAsync(long playlistItemId, int userId);
+        Task<playlist_best_score?> GetUserBestScoreAsync(long roomId, long playlistItemId, int userId);
 
         /// <summary>
-        /// Gets the overall rank of user <paramref name="userId"/> in the room with <paramref name="roomId"/>.
+        /// Gets the rank of <paramref name="scoreId"/> in the playlist item with <paramref name="playlistItemId"/>
+        /// in the room with <paramref name="roomId"/>.
         /// </summary>
-        Task<int> GetUserRankInRoomAsync(long roomId, int userId);
+        Task<int> GetUserRankInRoomAsync(long roomId, long playlistItemId, ulong scoreId);
+
+        /// <summary>
+        /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>,
+        /// fetching from the API if it is not present in the database.
+        /// </summary>
+        Task<database_beatmap?> GetBeatmapOrFetchAsync(int beatmapId);
+
+        /// <summary>
+        /// Retrieves the fail time for the beatmap with the given <paramref name="beatmapId"/>.
+        /// </summary>
+        Task<fail_time?> GetBeatmapFailTimeAsync(int beatmapId);
+
+        /// <summary>
+        /// Updates the fail time record for the given <paramref name="failTime"/>.
+        /// </summary>
+        Task UpdateFailTimeAsync(fail_time failTime);
+
+        /// <summary>
+        /// Returns the total play time in seconds for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
+        /// </summary>
+        Task<int?> GetUserPlaytimeAsync(string gamemode, int userId);
+
+        /// <summary>
+        /// Updates the total play time for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
+        /// </summary>
+        Task UpdateUserPlaytimeAsync(string gamemode, int userId, int playTime);
+
+        /// <summary>
+        /// Returns all beatmap sets that have changed since the given <paramref name="after"/> timestamp.
+        /// </summary>
+        Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after);
+
+        /// <summary>
+        /// Updates the online status of the user with the given <paramref name="userId"/>.
+        /// </summary>
+        Task UpdateUserOnlineStatusAsync(int userId, bool isOnline);
 
         /// <summary>
         /// Logs an event that happened in a multiplayer room.
