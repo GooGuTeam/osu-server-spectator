@@ -173,10 +173,10 @@ namespace osu.Server.Spectator.Services
             await runCommand(HttpMethod.Post, "beatmaps/ensure", payload);
         }
 
-        public void UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream)
+        public async Task UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream)
         {
             var payload = new { score_id = scoreInfoOnlineID, user_id = scoreInfoUserID, beatmap_id = scoreInfoBeatmapId, mreplay = Convert.ToBase64String(outStream.ToArray()) };
-            _ = runCommand(HttpMethod.Post, "scores/replay", payload);
+            await runCommand(HttpMethod.Post, "scores/replay", payload);
         }
 
         public async Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync()

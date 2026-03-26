@@ -11,12 +11,10 @@ namespace osu.Server.Spectator.Services
     public class RulesetInitializer(RulesetManager rulesetManager, ILogger<RulesetInitializer> logger)
         : IHostedService
     {
-        private readonly RulesetManager _rulesetManager = rulesetManager;
-
-        public Task StartAsync(CancellationToken cancellationToken)
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
+            await rulesetManager.InitializeHashes();
             logger.LogInformation("Initialized all rulesets");
-            return Task.CompletedTask;
         }
 
         public Task StopAsync(CancellationToken cancellationToken)

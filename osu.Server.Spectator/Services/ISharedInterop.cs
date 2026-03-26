@@ -53,7 +53,7 @@ namespace osu.Server.Spectator.Services
         /// <summary>
         /// Uploads a replay to the server.
         /// </summary>
-        void UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream);
+        Task UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream);
 
         /// <summary>
         /// Retrieves the ruleset hashes from the server.

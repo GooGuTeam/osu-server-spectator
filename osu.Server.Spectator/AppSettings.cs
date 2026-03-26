@@ -160,8 +160,9 @@ namespace osu.Server.Spectator
                 : MatchmakingPoolSize;
 
             RulesetsPath = Environment.GetEnvironmentVariable("RULESETS_PATH") ?? "rulesets";
-            CheckRulesetVersion = Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION") is not string checkRuleset || !bool.TryParse(checkRuleset, out bool isCheckRulesetVersion)
-                                                                                                                         || isCheckRulesetVersion;
+
+            string? checkRulesetEnv = Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION");
+            CheckRulesetVersion = checkRulesetEnv == null || !bool.TryParse(checkRulesetEnv, out bool isCheckRulesetVersion) || isCheckRulesetVersion;
         }
     }
 }
