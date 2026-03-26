@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
+using osu.Game.Online.Multiplayer;
 using Microsoft.Extensions.Logging;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Catch;
@@ -107,7 +108,7 @@ namespace osu.Server.Spectator.Services
         {
             return _rulesetsById.TryGetValue(rulesetId, out Ruleset? ruleset)
                 ? ruleset
-                : throw new ArgumentException("Invalid ruleset ID provided.");
+                : throw new InvalidStateException("Invalid ruleset ID provided.");
         }
 
         public Ruleset GetRuleset(string shortName)

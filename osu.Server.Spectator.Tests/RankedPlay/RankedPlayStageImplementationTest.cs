@@ -42,7 +42,7 @@ namespace osu.Server.Spectator.Tests.RankedPlay
                     .Callback<long>(roomId => InitialiseRoom(roomId, 20))
                     .ReturnsAsync(() => new multiplayer_room
                     {
-                        type = database_match_type.matchmaking,
+                        type = database_match_type.ranked_play,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
                         host_id = int.Parse(Hub.Context.UserIdentifier!),
                     });

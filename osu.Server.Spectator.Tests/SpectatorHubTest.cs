@@ -48,7 +48,7 @@ namespace osu.Server.Spectator.Tests
             mockDatabase = new Mock<IDatabaseAccess>();
             mockDatabase.Setup(db => db.GetUsernameAsync(streamer_id)).ReturnsAsync(() => streamer_username);
 
-            mockDatabase.Setup(db => db.GetBeatmapAsync(It.IsAny<int>()))
+            mockDatabase.Setup(db => db.GetBeatmapOrFetchAsync(It.IsAny<int>()))
                         .ReturnsAsync((int id) => new database_beatmap
                         {
                             approved = BeatmapOnlineStatus.Ranked,
@@ -474,7 +474,7 @@ namespace osu.Server.Spectator.Tests
                 passed = true
             }));
 
-            mockDatabase.Setup(db => db.GetBeatmapAsync(beatmap_id)).Returns(Task.FromResult(new database_beatmap
+            mockDatabase.Setup(db => db.GetBeatmapOrFetchAsync(beatmap_id)).Returns(Task.FromResult(new database_beatmap
             {
                 approved = status,
                 checksum = "checksum"
@@ -560,7 +560,7 @@ namespace osu.Server.Spectator.Tests
                 passed = true
             }));
 
-            mockDatabase.Setup(db => db.GetBeatmapAsync(beatmap_id)).Returns(Task.FromResult(new database_beatmap
+            mockDatabase.Setup(db => db.GetBeatmapOrFetchAsync(beatmap_id)).Returns(Task.FromResult(new database_beatmap
             {
                 approved = BeatmapOnlineStatus.Ranked,
                 checksum = "checksum"

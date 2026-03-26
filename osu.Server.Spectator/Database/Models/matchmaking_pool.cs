@@ -16,6 +16,7 @@ namespace osu.Server.Spectator.Database.Models
         public int variant_id { get; set; }
         public string name { get; set; } = string.Empty;
         public bool active { get; set; }
+        public matchmaking_pool_type type { get; set; }
 
         /// <summary>
         /// The number of players required for a match to be found.

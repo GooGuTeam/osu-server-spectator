@@ -306,7 +306,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
                 await hub.Clients.Group(group.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingRoomInvitedWithParams), new MatchmakingRoomInvitationParams
                 {
-                    Type = MatchmakingPoolType.QuickPlay
+                    Type = bundle.Queue.Pool.type.ToPoolType()
                 });
 
                 await hub.Clients.Group(group.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingQueueStatusChanged), new MatchmakingQueueStatus.MatchFound());
@@ -327,7 +327,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 {
                     Settings =
                     {
-                        MatchType = MatchType.Matchmaking,
+                        MatchType = bundle.Queue.Pool.type.ToMatchType(),
                         Password = password
                     }
                 });

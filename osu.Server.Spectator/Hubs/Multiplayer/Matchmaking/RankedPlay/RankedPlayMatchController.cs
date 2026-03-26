@@ -327,7 +327,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
 
         public MatchStartedEventDetail GetMatchDetails() => new MatchStartedEventDetail
         {
-            room_type = database_match_type.matchmaking
+            room_type = database_match_type.ranked_play
         };
     }
 }

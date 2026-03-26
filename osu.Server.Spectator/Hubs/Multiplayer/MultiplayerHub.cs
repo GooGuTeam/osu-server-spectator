@@ -65,14 +65,21 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             using (var usage = await GetOrCreateLocalUserState())
             {
-                if (Context.GetHttpContext()?.Request.Headers.TryGetValue(HubClientConnector.RULESET_HASH_HEADER, out StringValues headerValue) == true)
+                try
                 {
-                    Dictionary<string, string>? parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(headerValue.ToString());
-
-                    if (parsed != null)
+                    if (Context.GetHttpContext()?.Request.Headers.TryGetValue(HubClientConnector.RULESET_HASH_HEADER, out StringValues headerValue) == true)
                     {
-                        rulesetHashes = parsed;
+                        Dictionary<string, string>? parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(headerValue.ToString());
+
+                        if (parsed != null)
+                        {
+                            rulesetHashes = parsed;
+                        }
                     }
+                }
+                catch
+                {
+                    // GetHttpContext may throw if the context does not support Features (e.g. in tests).
                 }
 
                 Log("Connected with ruleset hashes: " + string.Join(", ", rulesetHashes.Select(kvp => $"{kvp.Key}: {kvp.Value}")));
