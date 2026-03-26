@@ -95,28 +95,8 @@ namespace osu.Server.Spectator
                         config.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                         config.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                     })
-                    // options will be injected through DI, via the singleton registration above.
-                    .AddJwtBearer(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME)
-                    .AddJwtBearer(ConfigureJwtBearerOptions.REFEREE_CLIENT_SCHEME)
-                    .AddPolicyScheme(JwtBearerDefaults.AuthenticationScheme, displayName: null, options =>
-                    {
-                        options.ForwardDefaultSelector = ctx => ctx.GetEndpoint()?.Metadata.GetMetadata<HubMetadata>()?.HubType == typeof(RefereeHub)
-                            ? ConfigureJwtBearerOptions.REFEREE_CLIENT_SCHEME
-                            : ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME;
-                    });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME, policy =>
-                {
-                    policy.RequireAuthenticatedUser();
-                    policy.RequireClaim("scopes", "*");
-                });
-                options.AddPolicy(ConfigureJwtBearerOptions.REFEREE_CLIENT_SCHEME, policy =>
-                {
-                    policy.RequireAuthenticatedUser();
-                    policy.RequireClaim("scopes", "multiplayer.write_manage");
-                });
-            });
+                    .AddJwtBearer();
+            services.AddAuthorization();
             services.AddSingleton<IUserIdProvider, JwtUserIdProvider>();
         }
 

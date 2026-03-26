@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
@@ -33,7 +34,7 @@ namespace osu.Server.Spectator.Storage
 
                 logger.LogInformation($"Uploading replay for score {score.ScoreInfo.OnlineID}");
 
-                await S3.Upload(AppSettings.ReplaysBucket, score.ScoreInfo.OnlineID.ToString(CultureInfo.InvariantCulture), outStream, outStream.Length);
+                await S3.Upload(Environment.GetEnvironmentVariable("REPLAYS_BUCKET") ?? string.Empty, score.ScoreInfo.OnlineID.ToString(CultureInfo.InvariantCulture), outStream, outStream.Length);
             }
         }
     }

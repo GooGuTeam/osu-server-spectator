@@ -22,7 +22,7 @@ using osu.Server.Spectator.Extensions;
 
 namespace osu.Server.Spectator.Hubs.Spectator
 {
-    [Authorize(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME)]
+    [Authorize]
     public class SpectatorHub : StatefulUserHub<ISpectatorClient, SpectatorClientState>, ISpectatorServer
     {
         /// <summary>

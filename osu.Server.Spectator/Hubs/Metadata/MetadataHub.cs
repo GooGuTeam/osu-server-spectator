@@ -24,7 +24,7 @@ using BeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
 
 namespace osu.Server.Spectator.Hubs.Metadata
 {
-    [Authorize(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME)]
+    [Authorize]
     public class MetadataHub : StatefulUserHub<IMetadataClient, MetadataClientState>, IMetadataServer
     {
         private readonly IMemoryCache cache;

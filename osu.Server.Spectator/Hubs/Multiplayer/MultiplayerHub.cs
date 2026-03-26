@@ -21,7 +21,7 @@ using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
-    [Authorize(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME)]
+    [Authorize]
     public partial class MultiplayerHub : StatefulUserHub<IMultiplayerClient, MultiplayerClientState>, IMultiplayerServer
     {
         public const string STATSD_PREFIX = "multiplayer";

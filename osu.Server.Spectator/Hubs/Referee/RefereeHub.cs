@@ -27,7 +27,7 @@ using RollRequest = osu.Server.Spectator.Hubs.Referee.Models.Requests.RollReques
 
 namespace osu.Server.Spectator.Hubs.Referee
 {
-    [Authorize(ConfigureJwtBearerOptions.REFEREE_CLIENT_SCHEME)]
+    [Authorize]
     public class RefereeHub : Hub, IRefereeHubServer
     {
         private readonly IDatabaseFactory databaseFactory;

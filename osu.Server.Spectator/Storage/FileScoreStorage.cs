@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ namespace osu.Server.Spectator.Storage
                 score.ScoreInfo.OnlineID,
                 filename);
 
-            using (var outStream = File.Create(Path.Combine(AppSettings.ReplaysPath, filename)))
+            using (var outStream = File.Create(Path.Combine(Environment.GetEnvironmentVariable("REPLAYS_PATH") ?? "replays", filename)))
                 legacyEncoder.Encode(outStream);
 
             return Task.CompletedTask;
