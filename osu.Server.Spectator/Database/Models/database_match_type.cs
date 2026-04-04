@@ -19,8 +19,8 @@ namespace osu.Server.Spectator.Database.Models
         // Matchmaking: quick Play
         matchmaking,
 
-        // Matchmaking: ranked play
-        ranked_play
+        // Matchmaking: Ranked Play
+        ranked_play,
     }
 
     public static class DatabaseMatchTypeExtensions

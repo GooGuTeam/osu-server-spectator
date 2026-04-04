@@ -138,7 +138,6 @@ namespace osu.Server.Spectator.Tests.Matchmaking
 
             Assert.Single(result);
             Assert.Equal(1234, result.Single().beatmap_id);
-            Assert.Equal(1, result.Single().playmode);
         }
     }
 }

@@ -14,6 +14,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
     {
         public int PoolSize { get; set; } = AppSettings.MatchmakingPoolSize;
 
+        public matchmaking_pool? Pool { get; private set; }
+
         private readonly matchmaking_pool_beatmap[] beatmaps;
 
         public MatchmakingBeatmapSelector(matchmaking_pool_beatmap[] beatmaps)
@@ -23,7 +25,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             foreach (var b in beatmaps)
             {
                 // Todo: This default rating is only accurate for NoMod beatmaps.
-                b.rating ??= (int)Math.Round(800 + 500 * (Math.Exp(0.16 * b.difficultyrating) - 1));
+                b.rating ??= (int)Math.Round(800 + 500 * (Math.Exp(0.16 * b.difficulty_rating) - 1));
             }
         }
 
@@ -46,13 +48,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                     {
                         pool_id = pool.id,
                         beatmap_id = b.beatmap_id,
-                        playmode = b.playmode,
                         checksum = b.checksum,
-                        difficultyrating = b.difficultyrating
+                        difficulty_rating = b.difficulty_rating
                     }).ToArray();
                 }
 
-                return new MatchmakingBeatmapSelector(beatmaps);
+                return new MatchmakingBeatmapSelector(beatmaps) { Pool = pool };
             }
         }
 

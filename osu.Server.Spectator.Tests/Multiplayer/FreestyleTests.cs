@@ -188,7 +188,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
 
             // Out of range
             await Assert.ThrowsAsync<InvalidStateException>(() => Hub.ChangeUserStyle(null, -1));
-            await Assert.ThrowsAsync<InvalidStateException>(() => Hub.ChangeUserStyle(null, 4));
+            await Assert.ThrowsAsync<InvalidStateException>(() => Hub.ChangeUserStyle(null, 100));
 
             // Convertible
             await Hub.ChangeUserStyle(null, 0);

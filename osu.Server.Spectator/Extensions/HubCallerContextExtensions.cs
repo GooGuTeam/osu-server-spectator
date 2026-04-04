@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Primitives;
 using osu.Game.Online;
@@ -15,10 +16,42 @@ namespace osu.Server.Spectator.Extensions
         /// </summary>
         public static int GetUserId(this HubCallerContext context)
         {
-            if (context.UserIdentifier == null)
-                throw new InvalidOperationException($"Attempted to get user id with null {nameof(context.UserIdentifier)}");
+            try
+            {
+                var httpContext = context.GetHttpContext();
 
-            return int.Parse(context.UserIdentifier);
+                if (httpContext != null)
+                {
+                    if (httpContext.Request.Headers.TryGetValue("Authorization", out var authHeader) && !string.IsNullOrEmpty(authHeader))
+                    {
+                        const string bearer_prefix = "Bearer ";
+                        var headerValue = authHeader.ToString();
+
+                        if (headerValue.StartsWith(bearer_prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var token = headerValue.Substring(bearer_prefix.Length).Trim();
+
+                            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                            var jwtToken = handler.ReadJwtToken(token);
+                            var subClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "sub");
+                            var subValue = subClaim?.Value;
+
+                            if (!string.IsNullOrEmpty(subValue) && int.TryParse(subValue, out int userId))
+                                return userId;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // GetHttpContext may throw if the context does not support Features (e.g. in tests).
+            }
+
+            // Fallback to UserIdentifier (used by tests and legacy paths).
+            if (context.UserIdentifier != null)
+                return int.Parse(context.UserIdentifier);
+
+            throw new InvalidOperationException("Unable to determine user ID from JWT or UserIdentifier.");
         }
 
         /// <summary>

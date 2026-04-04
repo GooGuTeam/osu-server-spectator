@@ -8,47 +8,65 @@ namespace osu.Server.Spectator
 {
     public static class AppSettings
     {
-        public static bool SaveReplays { get; }
-
+        public static bool SaveReplays { get; set; }
         public static int ReplayUploaderConcurrency { get; set; } = 1;
 
-        #region For use with FileScoreStorage
+        #region Sync With g0v0-server
 
-        public static string ReplaysPath { get; } = "replays";
+        public static bool EnableAllBeatmapLeaderboard { get; set; }
 
-        #endregion
+        // ReSharper disable once InconsistentNaming
+        public static bool EnableAP { get; set; }
 
-        #region For use with S3ScoreStorage
-
-        public static string S3Key { get; } = string.Empty;
-        public static string S3Secret { get; } = string.Empty;
-        public static string ReplaysBucket { get; } = string.Empty;
+        // ReSharper disable once InconsistentNaming
+        public static bool EnableRX { get; set; }
 
         #endregion
 
         public static bool TrackBuildUserCounts { get; set; }
-        public static bool ClientCheckVersion { get; }
-        public static int[] ClientCheckVersionExemptGroups { get; }
+        public static bool ClientCheckVersion { get; set; }
+        public static int[] ClientCheckVersionExemptGroups { get; set; }
 
-        public static int ServerPort { get; set; } = 80;
+        public static int ServerPort { get; set; } = 8086;
         public static string RedisHost { get; } = "localhost";
         public static string DataDogAgentHost { get; set; } = "localhost";
 
         public static string DatabaseHost { get; } = "localhost";
-        public static string DatabaseUser { get; } = "osuweb";
+        public static string DatabaseUser { get; } = "osu_api";
+        public static string DatabasePassword { get; } = "passsword";
+        public static string DatabaseName { get; } = "osu_api";
         public static int DatabasePort { get; } = 3306;
 
-        public static string SharedInteropDomain { get; } = "http://localhost:8080";
+        public static string SharedInteropDomain { get; } = "http://localhost:8000";
         public static string SharedInteropSecret { get; } = string.Empty;
 
         public static string? SentryDsn { get; }
 
-        public static int BanchoBotUserId { get; } = 3;
+        #region JWT Authentication Settings
+
+        public static string JwtSecretKey { get; } = "your_jwt_secret_here";
+        public static string JwtAlgorithm { get; } = "HS256";
+        public static int JwtAccessTokenExpireMinutes { get; } = 1440;
+        public static int OsuClientId { get; } = 5;
+        public static bool UseLegacyRsaAuth { get; }
+
+        #endregion
+
+        #region Custom rulesets
+
+        public static string RulesetsPath { get; }
+
+        public static bool CheckRulesetVersion { get; set; }
+
+        #endregion
+
+        // app.const
+        // BANCHOBOT_ID = 2
+        public static int BanchoBotUserId { get; } = 2;
 
         public static int MatchmakingRoomRounds { get; set; } = 5;
         public static bool MatchmakingHeadToHeadIsBestOf { get; set; } = true;
         public static bool MatchmakingRoomAllowSkip { get; set; }
-
         public static TimeSpan MatchmakingLobbyUpdateRate { get; } = TimeSpan.FromSeconds(5);
         public static TimeSpan MatchmakingQueueUpdateRate { get; } = TimeSpan.FromSeconds(1);
 
@@ -60,7 +78,7 @@ namespace osu.Server.Spectator
         /// <summary>
         /// The total number of beatmaps per matchmaking room.
         /// </summary>
-        public static int MatchmakingPoolSize { get; } = 50;
+        public static int MatchmakingPoolSize { get; set; } = 50;
 
         static AppSettings()
         {
@@ -68,10 +86,12 @@ namespace osu.Server.Spectator
             ReplayUploaderConcurrency = int.TryParse(Environment.GetEnvironmentVariable("REPLAY_UPLOAD_THREADS"), out int uploaderConcurrency) ? uploaderConcurrency : ReplayUploaderConcurrency;
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ReplayUploaderConcurrency);
 
-            ReplaysPath = Environment.GetEnvironmentVariable("REPLAYS_PATH") ?? ReplaysPath;
-            S3Key = Environment.GetEnvironmentVariable("S3_KEY") ?? S3Key;
-            S3Secret = Environment.GetEnvironmentVariable("S3_SECRET") ?? S3Secret;
-            ReplaysBucket = Environment.GetEnvironmentVariable("REPLAYS_BUCKET") ?? ReplaysBucket;
+            EnableAllBeatmapLeaderboard = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_ALL_BEATMAP_LEADERBOARD"), out bool enableAllBeatmapLeaderboard)
+                ? enableAllBeatmapLeaderboard
+                : EnableAllBeatmapLeaderboard;
+            EnableAP = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_AP") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_AP"), out bool enableAP) ? enableAP : EnableAP;
+            EnableRX = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_RX") ?? Environment.GetEnvironmentVariable("ENABLE_OSU_RX"), out bool enableRX) ? enableRX : EnableRX;
+
             TrackBuildUserCounts = bool.TryParse(Environment.GetEnvironmentVariable("TRACK_BUILD_USER_COUNTS"), out bool trackBuildUserCounts) ? trackBuildUserCounts : TrackBuildUserCounts;
             ClientCheckVersion = bool.TryParse(Environment.GetEnvironmentVariable("CLIENT_CHECK_VERSION"), out bool clientCheckVersion) ? clientCheckVersion : ClientCheckVersion;
 
@@ -89,14 +109,25 @@ namespace osu.Server.Spectator
             RedisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? RedisHost;
             DataDogAgentHost = Environment.GetEnvironmentVariable("DD_AGENT_HOST") ?? DataDogAgentHost;
 
-            DatabaseHost = Environment.GetEnvironmentVariable("DB_HOST") ?? DatabaseHost;
-            DatabaseUser = Environment.GetEnvironmentVariable("DB_USER") ?? DatabaseUser;
-            DatabasePort = int.TryParse(Environment.GetEnvironmentVariable("DB_PORT"), out int databasePort) ? databasePort : DatabasePort;
+            DatabaseHost = Environment.GetEnvironmentVariable("MYSQL_HOST") ?? DatabaseHost;
+            DatabaseUser = Environment.GetEnvironmentVariable("MYSQL_USER") ?? DatabaseUser;
+            DatabasePort = int.TryParse(Environment.GetEnvironmentVariable("MYSQL_PORT"), out int databasePort) ? databasePort : DatabasePort;
+            DatabasePassword = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? DatabasePassword;
+            DatabaseName = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? DatabaseName;
 
             SharedInteropDomain = Environment.GetEnvironmentVariable("SHARED_INTEROP_DOMAIN") ?? SharedInteropDomain;
             SharedInteropSecret = Environment.GetEnvironmentVariable("SHARED_INTEROP_SECRET") ?? SharedInteropSecret;
 
-            SentryDsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
+            SentryDsn = Environment.GetEnvironmentVariable("SP_SENTRY_DSN") ?? null;
+
+            // JWT Authentication Settings
+            JwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? JwtSecretKey;
+            JwtAlgorithm = Environment.GetEnvironmentVariable("JWT_ALGORITHM") ?? JwtAlgorithm;
+            JwtAccessTokenExpireMinutes = int.TryParse(Environment.GetEnvironmentVariable("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"), out int jwtExpireMinutes)
+                ? jwtExpireMinutes
+                : JwtAccessTokenExpireMinutes;
+            OsuClientId = int.TryParse(Environment.GetEnvironmentVariable("OSU_CLIENT_ID"), out int osuClientId) ? osuClientId : OsuClientId;
+            UseLegacyRsaAuth = bool.TryParse(Environment.GetEnvironmentVariable("USE_LEGACY_RSA_AUTH"), out bool useLegacyRsaAuth) ? useLegacyRsaAuth : UseLegacyRsaAuth;
 
             BanchoBotUserId = int.TryParse(Environment.GetEnvironmentVariable("BANCHO_BOT_USER_ID"), out int banchoBotUserId) ? banchoBotUserId : BanchoBotUserId;
 
@@ -127,6 +158,11 @@ namespace osu.Server.Spectator
             MatchmakingPoolSize = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_POOL_SIZE"), out int mmPoolSize)
                 ? mmPoolSize
                 : MatchmakingPoolSize;
+
+            RulesetsPath = Environment.GetEnvironmentVariable("RULESETS_PATH") ?? "rulesets";
+
+            string? checkRulesetEnv = Environment.GetEnvironmentVariable("CHECK_RULESET_VERSION");
+            CheckRulesetVersion = checkRulesetEnv == null || !bool.TryParse(checkRulesetEnv, out bool isCheckRulesetVersion) || isCheckRulesetVersion;
         }
     }
 }

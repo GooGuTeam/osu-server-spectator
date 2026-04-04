@@ -3,16 +3,15 @@
 
 using System;
 
+// ReSharper disable InconsistentNaming (matches database table)
+
 namespace osu.Server.Spectator.Database.Models
 {
-    // ReSharper disable once InconsistentNaming
     [Serializable]
-    public enum room_category
+    public class fail_time
     {
-        normal,
-        spotlights,
-        featured_artist,
-        daily_challenge,
-        realtime,
+        public int beatmap_id { get; set; }
+        public required byte[] exit { get; set; }
+        public required byte[] fail { get; set; }
     }
 }

@@ -2,6 +2,8 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -16,6 +18,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
+using osu.Server.Spectator.Entities;
 
 namespace osu.Server.Spectator.Services
 {
@@ -162,6 +165,24 @@ namespace osu.Server.Spectator.Services
         public async Task RemoveUserFromRoomAsync(int userId, long roomId)
         {
             await runCommand(HttpMethod.Delete, $"multiplayer/rooms/{roomId}/users/{userId}");
+        }
+
+        public async Task EnsureBeatmapPresentAsync(int beatmapId)
+        {
+            var payload = new { beatmap_id = beatmapId };
+            await runCommand(HttpMethod.Post, "beatmaps/ensure", payload);
+        }
+
+        public async Task UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, MemoryStream outStream)
+        {
+            var payload = new { score_id = scoreInfoOnlineID, user_id = scoreInfoUserID, beatmap_id = scoreInfoBeatmapId, mreplay = Convert.ToBase64String(outStream.ToArray()) };
+            await runCommand(HttpMethod.Post, "scores/replay", payload);
+        }
+
+        public async Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync()
+        {
+            string result = await runCommand(HttpMethod.Get, "ruleset-hashes");
+            return JsonSerializer.Deserialize<Dictionary<string, RulesetVersionEntry>>(result) ?? new Dictionary<string, RulesetVersionEntry>();
         }
 
         /// <summary>

@@ -30,7 +30,7 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<EntityStore<RefereeClientState>>()
                                     .AddSingleton<GracefulShutdownManager>()
                                     .AddSingleton<MetadataBroadcaster>()
-                                    .AddSingleton<IScoreStorage, S3ScoreStorage>()
+                                    .AddSingleton<IScoreStorage, ServerScoreStorage>()
                                     .AddSingleton<ScoreUploader>()
                                     .AddSingleton<IScoreProcessedSubscriber, ScoreProcessedSubscriber>()
                                     .AddSingleton<BuildUserCountUpdater>()
@@ -40,6 +40,8 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<MultiplayerEventDispatcher>()
                                     .AddSingleton<IMatchmakingQueueBackgroundService, MatchmakingQueueBackgroundService>()
                                     .AddHostedService<IMatchmakingQueueBackgroundService>(ctx => ctx.GetRequiredService<IMatchmakingQueueBackgroundService>())
+                                    .AddSingleton<RulesetManager>()
+                                    .AddHostedService<RulesetInitializer>()
                                     .AddSingleton<IMultiplayerRoomController, MultiplayerRoomController>();
         }
 

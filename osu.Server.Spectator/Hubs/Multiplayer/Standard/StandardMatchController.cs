@@ -133,6 +133,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
             return Task.CompletedTask;
         }
 
+        private bool isHostOrReferee(MultiplayerRoomUser user)
+            => user.Equals(room.Host) || user.Role == MultiplayerRoomUserRole.Referee;
+
         /// <summary>
         /// Add a playlist item to the room's queue.
         /// </summary>
@@ -143,12 +146,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
         public virtual async Task AddPlaylistItem(MultiplayerPlaylistItem item, MultiplayerRoomUser user)
         {
             bool isHostOnly = room.Settings.QueueMode == QueueMode.HostOnly;
-            bool isHostOrReferee = user.Equals(room.Host) || user.Role == MultiplayerRoomUserRole.Referee;
 
-            if (isHostOnly && !isHostOrReferee)
+            if (isHostOnly && !isHostOrReferee(user))
                 throw new NotHostException();
 
-            int limit = isHostOrReferee ? HOST_PLAYLIST_LIMIT : GUEST_PLAYLIST_LIMIT;
+            int limit = isHostOrReferee(user) ? HOST_PLAYLIST_LIMIT : GUEST_PLAYLIST_LIMIT;
 
             if (room.Playlist.Count(i => i.OwnerID == user.UserID && !i.Expired) >= limit)
                 throw new InvalidStateException($"Can't enqueue more than {limit} items at once.");
@@ -172,9 +174,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(room.RulesetManager);
                 item.OwnerID = user.UserID;
-                item.StarRating = beatmap.difficultyrating;
+                item.StarRating = beatmap.difficulty_rating;
 
                 await addItem(db, item);
                 if (room.State == MultiplayerRoomState.Open)
@@ -203,9 +205,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (beatmap.playmode != 0 && item.RulesetID != beatmap.playmode)
                     throw new InvalidStateException("Attempted to select an invalid beatmap and ruleset combination.");
 
-                item.EnsureModsValid();
+                item.EnsureModsValid(room.RulesetManager);
                 item.OwnerID = user.UserID;
-                item.StarRating = beatmap.difficultyrating;
+                item.StarRating = beatmap.difficulty_rating;
 
                 var existingItem = room.Playlist.SingleOrDefault(i => i.ID == item.ID);
 
@@ -218,8 +220,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                 if (existingItem == null)
                     throw new InvalidStateException("Attempted to change an item that doesn't exist.");
 
-                bool isHostOrReferee = user.Equals(room.Host) || user.Role == MultiplayerRoomUserRole.Referee;
-                if (existingItem.OwnerID != user.UserID && !isHostOrReferee)
+                if (existingItem.OwnerID != user.UserID && !isHostOrReferee(user))
                     throw new InvalidStateException("Attempted to change an item which is not owned by the user.");
 
                 if (existingItem.Expired)
@@ -243,7 +244,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
         public virtual async Task RemovePlaylistItem(long playlistItemId, MultiplayerRoomUser user)
         {
             var item = room.Playlist.FirstOrDefault(item => item.ID == playlistItemId);
-            bool isHostOrReferee = user.Equals(room.Host) || user.Role == MultiplayerRoomUserRole.Referee;
 
             if (item == null)
                 throw new InvalidStateException("Item does not exist in the room.");
@@ -258,7 +258,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
                     throw new InvalidStateException("The current item in the room cannot be removed when currently being played.");
             }
 
-            if (item.OwnerID != user.UserID && !isHostOrReferee)
+            if (item.OwnerID != user.UserID && !isHostOrReferee(user))
                 throw new InvalidStateException("Attempted to remove an item which is not owned by the user.");
 
             if (item.Expired)
@@ -266,7 +266,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
 
             using (var db = dbFactory.GetInstance())
             {
-                if (await db.AnyScoreTokenExistsFor(playlistItemId))
+                if (await db.AnyScoreTokenExistsFor(playlistItemId, room.RoomID))
                     throw new InvalidStateException("Attempted to remove an item which has already been played.");
 
                 await db.RemovePlaylistItemAsync(room.RoomID, playlistItemId);

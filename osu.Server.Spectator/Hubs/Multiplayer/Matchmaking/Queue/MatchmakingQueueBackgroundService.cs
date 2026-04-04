@@ -12,6 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
@@ -49,6 +50,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
         private readonly ILogger logger;
         private readonly IMemoryCache memoryCache;
         private readonly MultiplayerEventDispatcher eventDispatcher;
+        private readonly RulesetManager rulesetManager;
 
         private DateTimeOffset lastLobbyUpdateTime = DateTimeOffset.UnixEpoch;
         private DateTimeOffset lastQueueRefreshTime = DateTimeOffset.UnixEpoch;
@@ -56,7 +58,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
 
         public MatchmakingQueueBackgroundService(IHubContext<MultiplayerHub> hub, ISharedInterop sharedInterop, IDatabaseFactory databaseFactory, ILoggerFactory loggerFactory,
                                                  EntityStore<ServerMultiplayerRoom> rooms, IMultiplayerRoomController roomController, IMemoryCache memoryCache,
-                                                 MultiplayerEventDispatcher eventDispatcher)
+                                                 MultiplayerEventDispatcher eventDispatcher, RulesetManager rulesetManager)
         {
             this.hub = hub;
             this.sharedInterop = sharedInterop;
@@ -65,6 +67,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
             this.roomController = roomController;
             this.memoryCache = memoryCache;
             this.eventDispatcher = eventDispatcher;
+            this.rulesetManager = rulesetManager;
 
             this.loggerFactory = loggerFactory;
             logger = loggerFactory.CreateLogger(nameof(MatchmakingQueueBackgroundService));
@@ -336,7 +339,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue
                 using (var roomUsage = await rooms.GetForUse(roomId, true))
                 {
                     roomUsage.Item = await ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(roomId, roomController, databaseFactory, eventDispatcher, loggerFactory, bundle.Queue.Pool.id,
-                        group.Users, beatmapSelector);
+                        group.Users, beatmapSelector, rulesetManager);
                 }
 
                 await hub.Clients.Group(group.Identifier).SendAsync(nameof(IMatchmakingClient.MatchmakingRoomReady), roomId, password);

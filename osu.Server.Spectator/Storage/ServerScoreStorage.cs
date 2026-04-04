@@ -1,23 +1,25 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Scoring.Legacy;
 using osu.Server.Spectator.Hubs;
+using osu.Server.Spectator.Services;
 
 namespace osu.Server.Spectator.Storage
 {
-    public class FileScoreStorage : IScoreStorage
+    public class ServerScoreStorage : IScoreStorage
     {
         private readonly ILogger logger;
+        private readonly ISharedInterop sharedInterop;
 
-        public FileScoreStorage(ILoggerFactory loggerFactory)
+        public ServerScoreStorage(ILoggerFactory loggerFactory, ISharedInterop sharedInterop)
         {
-            logger = loggerFactory.CreateLogger(nameof(FileScoreStorage));
+            this.sharedInterop = sharedInterop;
+            logger = loggerFactory.CreateLogger(nameof(ServerScoreStorage));
         }
 
         public Task WriteAsync(ScoreUploader.UploadItem item)
@@ -27,14 +29,11 @@ namespace osu.Server.Spectator.Storage
             // (see `LegacyBeatmapDecoder.EARLY_VERSION_TIMING_OFFSET`).
             var legacyEncoder = new LegacyScoreEncoder(score, new Beatmap { BeatmapVersion = item.Beatmap.osu_file_version });
 
-            string filename = score.ScoreInfo.OnlineID.ToString();
-
-            logger.LogInformation("Writing replay for score {scoreId} to {filename}",
-                score.ScoreInfo.OnlineID,
-                filename);
-
-            using (var outStream = File.Create(Path.Combine(Environment.GetEnvironmentVariable("REPLAYS_PATH") ?? "replays", filename)))
-                legacyEncoder.Encode(outStream);
+            using (var outStream = new MemoryStream())
+            {
+                legacyEncoder.Encode(outStream, true);
+                sharedInterop.UploadReplayAsync(score.ScoreInfo.UserID, score.ScoreInfo.OnlineID, item.Beatmap.beatmap_id, outStream);
+            }
 
             return Task.CompletedTask;
         }

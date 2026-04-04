@@ -15,6 +15,7 @@ using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Multiplayer;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
+using osu.Server.Spectator.Services;
 using osu.Server.Spectator.Tests.Multiplayer;
 using Xunit;
 using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
@@ -36,7 +37,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                     {
                         type = database_match_type.matchmaking,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        user_id = int.Parse(Hub.Context.UserIdentifier!),
+                        host_id = int.Parse(Hub.Context.UserIdentifier!),
                     });
 
             Database.Setup(db => db.GetMatchmakingUserStatsAsync(It.IsAny<int>(), It.IsAny<uint>()))
@@ -52,14 +53,14 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
                 room.Item = await initialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0, [USER_ID, USER_ID_2],
-                    new MatchmakingBeatmapSelector([]));
+                    new MatchmakingBeatmapSelector([]), RulesetManager);
             }
         }
 
         [Fact]
         public async Task NormalRoomFlow()
         {
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
             [
                 new SoloScore
                 {
@@ -211,7 +212,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
                 room.Item = await initialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0,
-                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]));
+                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]), RulesetManager);
             }
 
             await Hub.JoinRoom(ROOM_ID);
@@ -305,7 +306,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
                 room.Item = await initialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0,
-                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]));
+                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]), RulesetManager);
             }
 
             await Hub.JoinRoom(ROOM_ID);
@@ -342,7 +343,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
                 room.Item = await initialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0,
-                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]));
+                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]), RulesetManager);
             }
 
             await Hub.JoinRoom(ROOM_ID);
@@ -531,7 +532,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             AppSettings.MatchmakingRoomRounds = 5;
             AppSettings.MatchmakingHeadToHeadIsBestOf = true;
 
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
             [
                 new SoloScore
                 {
@@ -612,7 +613,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             for (int i = 0; i < 5; i++)
             {
                 int i2 = i;
-                Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
+                Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
                 [
                     new SoloScore
                     {
@@ -660,7 +661,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             using (var roomUsage = await Rooms.GetForUse(ROOM_ID, true))
             {
                 roomUsage.Item = await initialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0,
-                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]));
+                    [USER_ID, USER_ID_2, 3], new MatchmakingBeatmapSelector([]), RulesetManager);
             }
 
             await Hub.JoinRoom(ROOM_ID);
@@ -718,7 +719,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
                 totalRounds = 1;
             }
 
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
             [
                 new SoloScore
                 {
@@ -805,7 +806,7 @@ namespace osu.Server.Spectator.Tests.Matchmaking
         [Fact]
         public async Task MissingScoreIsTreatedAsZero()
         {
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>())).Returns(() => Task.FromResult((IEnumerable<SoloScore>)
             [
                 new SoloScore
                 {
@@ -928,9 +929,10 @@ namespace osu.Server.Spectator.Tests.Matchmaking
 
         private static Task<ServerMultiplayerRoom> initialiseMatchmakingRoomAsync(long roomId, IMultiplayerRoomController roomController, IDatabaseFactory dbFactory,
                                                                                   MultiplayerEventDispatcher eventDispatcher, ILoggerFactory loggerFactory,
-                                                                                  uint poolId, int[] users, MatchmakingBeatmapSelector beatmapSelector)
+                                                                                  uint poolId, int[] users, MatchmakingBeatmapSelector beatmapSelector,
+                                                                                  RulesetManager rulesetManager)
             => ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(roomId, roomController, dbFactory, eventDispatcher, loggerFactory, poolId,
-                users.Select(u => new MatchmakingQueueUser(u.ToString()) { UserId = u }).ToArray(), beatmapSelector);
+                users.Select(u => new MatchmakingQueueUser(u.ToString()) { UserId = u }).ToArray(), beatmapSelector, rulesetManager);
 
         public Task DisposeAsync()
         {

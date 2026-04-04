@@ -13,24 +13,26 @@ using Microsoft.Extensions.Primitives;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.Metadata;
 using osu.Game.Users;
-using osu.Server.QueueProcessor;
+using osu.Server.Spectator.Helpers;
 using osu.Server.Spectator.Authentication;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Spectator;
+using StackExchange.Redis;
 using BeatmapUpdates = osu.Game.Online.Metadata.BeatmapUpdates;
 
 namespace osu.Server.Spectator.Hubs.Metadata
 {
-    [Authorize(ConfigureJwtBearerOptions.LAZER_CLIENT_SCHEME)]
+    [Authorize]
     public class MetadataHub : StatefulUserHub<IMetadataClient, MetadataClientState>, IMetadataServer
     {
         private readonly IMemoryCache cache;
         private readonly IDatabaseFactory databaseFactory;
         private readonly IDailyChallengeUpdater dailyChallengeUpdater;
         private readonly IScoreProcessedSubscriber scoreProcessedSubscriber;
+        private readonly IConnectionMultiplexer redis;
 
         internal const string ONLINE_PRESENCE_WATCHERS_GROUP = "metadata:online-presence-watchers";
         internal static string FRIEND_PRESENCE_WATCHERS_GROUP(int userId) => $"metadata:online-presence-watchers:{userId}";
@@ -43,14 +45,18 @@ namespace osu.Server.Spectator.Hubs.Metadata
             EntityStore<MetadataClientState> userStates,
             IDatabaseFactory databaseFactory,
             IDailyChallengeUpdater dailyChallengeUpdater,
-            IScoreProcessedSubscriber scoreProcessedSubscriber)
+            IScoreProcessedSubscriber scoreProcessedSubscriber,
+            IConnectionMultiplexer redis)
             : base(loggerFactory, userStates)
         {
             this.cache = cache;
             this.databaseFactory = databaseFactory;
             this.dailyChallengeUpdater = dailyChallengeUpdater;
             this.scoreProcessedSubscriber = scoreProcessedSubscriber;
+            this.redis = redis;
         }
+
+        private IDatabase redisDatabase => redis.GetDatabase();
 
         public override async Task OnConnectedAsync()
         {
@@ -76,13 +82,41 @@ namespace osu.Server.Spectator.Hubs.Metadata
                 : Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
 
             using (var db = databaseFactory.GetInstance())
+            {
+                await db.UpdateUserOnlineStatusAsync(usage.Item!.UserId, true);
+            }
+
+            redisDatabase.Publish(RedisChannel.Literal("user:online_status"), usage.Item!.UserId);
+            redisDatabase.StringSet($"metadata:online:{usage.Item!.UserId}", "metadata", TimeSpan.FromHours(2));
+
+            using (var db = databaseFactory.GetInstance())
                 await db.AddLoginForUserAsync(usage.Item!.UserId, userIp);
         }
 
         public async Task<BeatmapUpdates> GetChangesSince(int queueId)
         {
-            QueueProcessor.BeatmapUpdates updates = await BeatmapStatusWatcher.GetUpdatedBeatmapSetsAsync(queueId);
-            return new BeatmapUpdates(updates.BeatmapSetIDs, updates.LastProcessedQueueID);
+            var after = TimeHelper.ToDateTimeOffset(queueId);
+
+            using (var db = databaseFactory.GetInstance())
+            {
+                var beatmapSets = await db.GetChangedBeatmapSetsAsync(after);
+
+                List<int> beatmapSetIDs = new List<int>();
+                DateTimeOffset? lastUpdate = null;
+
+                foreach (var b in beatmapSets)
+                {
+                    beatmapSetIDs.Add(b.beatmapset_id);
+
+                    if (lastUpdate == null || b.updated_at > lastUpdate)
+                        lastUpdate = b.updated_at;
+                }
+
+                if (lastUpdate == null)
+                    lastUpdate = DateTimeOffset.UtcNow;
+
+                return new BeatmapUpdates(beatmapSetIDs.ToArray(), TimeHelper.ToMappedInt(lastUpdate.Value));
+            }
         }
 
         public async Task BeginWatchingUserPresence()
@@ -191,7 +225,7 @@ namespace osu.Server.Spectator.Hubs.Metadata
 
                 ulong lastProcessed = itemStats.LastProcessedScoreID;
 
-                SoloScore[] scores = (await db.GetPassingScoresForPlaylistItem(itemId, itemStats.LastProcessedScoreID)).ToArray();
+                SoloScore[] scores = (await db.GetPassingScoresForPlaylistItem(stats.RoomID, itemId, itemStats.LastProcessedScoreID)).ToArray();
 
                 if (scores.Length == 0)
                     return;
@@ -273,6 +307,13 @@ namespace osu.Server.Spectator.Hubs.Metadata
             Debug.Assert(state.Item != null);
 
             await base.CleanUpState(state);
+
+            using (var db = databaseFactory.GetInstance())
+                await db.UpdateUserOnlineStatusAsync(state.Item.UserId, false);
+
+            redisDatabase.Publish(RedisChannel.Literal("user:online_status"), state.Item.UserId);
+            redisDatabase.KeyDelete($"metadata:online:{state.Item.UserId}");
+
             if (shouldBroadcastPresenceToOtherUsers(state.Item))
                 await broadcastUserPresenceUpdate(state.Item.UserId, null);
             await scoreProcessedSubscriber.UnregisterFromAllMultiplayerRoomsAsync(state.Item.UserId);

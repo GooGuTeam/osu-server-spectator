@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.RankedPlay;
@@ -95,11 +97,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
             foreach (var beatmap in beatmaps)
             {
                 var card = new RankedPlayCardItem();
-                cardToEffectMap[card] = beatmap.ToPlaylistItem();
+                cardToEffectMap[card] = new MultiplayerPlaylistItem
+                {
+                    BeatmapID = beatmap.beatmap_id,
+                    BeatmapChecksum = beatmap.checksum!,
+                    RulesetID = beatmapSelector.Pool?.ruleset_id ?? 0,
+                    StarRating = beatmap.difficulty_rating,
+                    RequiredMods = JsonConvert.DeserializeObject<APIMod[]>(beatmap.mods ?? string.Empty) ?? [],
+                };
                 deck.Add(card);
             }
 
-            State.StarRating = beatmaps.Select(b => b.difficultyrating).DefaultIfEmpty(0).Average();
+            State.StarRating = beatmaps.Select(b => b.difficulty_rating).DefaultIfEmpty(0).Average();
 
             // Create an initial playlist item for the room. Clients require this to operate correctly.
             using (var db = DbFactory.GetInstance())

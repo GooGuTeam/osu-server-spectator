@@ -15,7 +15,9 @@ namespace osu.Server.Spectator
     {
         private static AmazonS3Client getClient(RegionEndpoint? endpoint = null)
         {
-            return new AmazonS3Client(new BasicAWSCredentials(AppSettings.S3Key, AppSettings.S3Secret), new AmazonS3Config
+            return new AmazonS3Client(new BasicAWSCredentials(
+                Environment.GetEnvironmentVariable("S3_KEY") ?? string.Empty,
+                Environment.GetEnvironmentVariable("S3_SECRET") ?? string.Empty), new AmazonS3Config
             {
                 CacheHttpClient = true,
                 HttpClientCacheSize = 32,

@@ -20,8 +20,8 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
         [Fact]
         public async Task DamageTakenWithMissingScore()
         {
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>()))
-                    .Returns<long>(_ => Task.FromResult<IEnumerable<SoloScore>>(
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>()))
+                    .Returns<long, long>((_, _) => Task.FromResult<IEnumerable<SoloScore>>(
                     [
                         new SoloScore { user_id = USER_ID, total_score = 500_000 }
                     ]));
@@ -51,8 +51,8 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
         [Fact]
         public async Task DamageTakenIsDifferenceBetweenScores()
         {
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>()))
-                    .Returns<long>(_ => Task.FromResult<IEnumerable<SoloScore>>(
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>()))
+                    .Returns<long, long>((_, _) => Task.FromResult<IEnumerable<SoloScore>>(
                     [
                         new SoloScore { user_id = USER_ID, total_score = 500_000 },
                         new SoloScore { user_id = USER_ID_2, total_score = 250_000 },
@@ -83,8 +83,8 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
         [Fact]
         public async Task DamageMultiplierAdded()
         {
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>()))
-                    .Returns<long>(_ => Task.FromResult<IEnumerable<SoloScore>>(
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>()))
+                    .Returns<long, long>((_, _) => Task.FromResult<IEnumerable<SoloScore>>(
                     [
                         new SoloScore { user_id = USER_ID, total_score = 500_000 },
                         new SoloScore { user_id = USER_ID_2, total_score = 250_000 },
