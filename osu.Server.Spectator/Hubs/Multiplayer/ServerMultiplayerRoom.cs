@@ -363,7 +363,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// </summary>
         /// <returns>The <see cref="MultiplayerRoomUser"/> who was removed.</returns>
         /// <exception cref="InvalidStateException">The user with the supplied <paramref name="userId"/> was not in the room.</exception>
-        public async Task<MultiplayerRoomUser> RemoveUser(int userId)
+        public async Task RemoveUser(int userId)
         {
             var user = Users.FirstOrDefault(u => u.UserID == userId);
 
@@ -378,7 +378,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             await MatchController.HandleUserLeft(user);
             await UpdateRoomStateIfRequired();
-            return user;
         }
 
         /// <summary>
@@ -468,7 +467,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             Log(user, $"User changing state from {user.State} to {newState}");
 
-            ensureValidStateSwitch(user.State, newState);
+            ensureValidStateSwitch(user.Role, user.State, newState);
 
             await ChangeAndBroadcastUserState(user, newState);
 
@@ -485,9 +484,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <summary>
         /// Given this room and a state transition, throw if there's an issue with the sequence of events.
         /// </summary>
+        /// <param name="userRole">The user's role.</param>
         /// <param name="oldState">The old state.</param>
         /// <param name="newState">The new state.</param>
-        private void ensureValidStateSwitch(MultiplayerUserState oldState, MultiplayerUserState newState)
+        private void ensureValidStateSwitch(MultiplayerRoomUserRole userRole, MultiplayerUserState oldState, MultiplayerUserState newState)
         {
             switch (newState)
             {
@@ -545,6 +545,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(newState), newState, null);
+            }
+
+            if (userRole == MultiplayerRoomUserRole.Referee
+                && newState != MultiplayerUserState.Idle
+                && newState != MultiplayerUserState.Spectating)
+            {
+                throw new InvalidStateException("Referees cannot participate in the match.");
             }
         }
 
@@ -624,6 +631,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (user == null)
                 throw new InvalidStateException("User is not in the room.");
 
+            if (user.Role == MultiplayerRoomUserRole.Referee)
+                throw new InvalidStateException("Referees do not participate in the match and cannot set their own style.");
+
             await changeUserStyle(user, beatmapId, rulesetId);
         }
 
@@ -685,6 +695,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             if (user == null)
                 throw new InvalidStateException("User is not in the room.");
+
+            if (user.Role == MultiplayerRoomUserRole.Referee)
+                throw new InvalidStateException("Referees do not participate in the match and cannot set their own mods.");
 
             await changeUserMods(user, newMods);
         }
@@ -923,6 +936,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             var user = Users.FirstOrDefault(u => u.UserID == userId);
             if (user == null)
                 throw new InvalidStateException("User is not in the room.");
+
+            if (user.Role == MultiplayerRoomUserRole.Referee)
+                throw new InvalidStateException("Referees do not participate in the match and cannot vote to skip.");
 
             if (!user.State.IsGameplayState())
                 throw new InvalidStateException("Cannot skip while not in gameplay.");

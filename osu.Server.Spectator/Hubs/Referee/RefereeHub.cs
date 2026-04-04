@@ -2,17 +2,16 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
-using osu.Server.Spectator.Authentication;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
@@ -28,11 +27,10 @@ using RollRequest = osu.Server.Spectator.Hubs.Referee.Models.Requests.RollReques
 namespace osu.Server.Spectator.Hubs.Referee
 {
     [Authorize]
-    public class RefereeHub : Hub, IRefereeHubServer
+    public class RefereeHub : LoggingHub<IRefereeHubClient>, IRefereeHubServer
     {
         private readonly IDatabaseFactory databaseFactory;
         private readonly ISharedInterop sharedInterop;
-        private readonly ILogger<RefereeHub> logger;
         private readonly IMultiplayerRoomController roomController;
         private readonly MultiplayerEventDispatcher eventDispatcher;
         private readonly EntityStore<RefereeClientState> refereeStates;
@@ -50,9 +48,9 @@ namespace osu.Server.Spectator.Hubs.Referee
             EntityStore<MultiplayerClientState> playerStates,
             ChatFilters chatFilters,
             RulesetManager rulesetManager)
+            : base(loggerFactory)
         {
             this.databaseFactory = databaseFactory;
-            logger = loggerFactory.CreateLogger<RefereeHub>();
             this.sharedInterop = sharedInterop;
             this.roomController = roomController;
             this.eventDispatcher = eventDispatcher;
@@ -78,6 +76,7 @@ namespace osu.Server.Spectator.Hubs.Referee
             await base.OnConnectedAsync();
         }
 
+        [Obsolete]
         public async Task Ping(string message)
         {
             string? username;
@@ -85,7 +84,7 @@ namespace osu.Server.Spectator.Hubs.Referee
             using (var db = databaseFactory.GetInstance())
                 username = await db.GetUsernameAsync(Context.GetUserId());
 
-            await Clients.Caller.SendAsync(nameof(IRefereeHubClient.Pong), $"Hi {username}! Here's your message back: {message}");
+            await Clients.Caller.Pong($"Hi {username}! Here's your message back: {message}");
         }
 
         public async Task<RoomJoinedResponse> MakeRoom(MakeRoomRequest request)
@@ -166,7 +165,9 @@ namespace osu.Server.Spectator.Hubs.Referee
                 {
                     Debug.Assert(roomUsage.Item != null);
 
-                    await roomController.LeaveRoom(userUsage.Item, roomUsage);
+                    await tryKickRefereeFromMultiplayerHub(roomUsage, userUsage.Item.UserId, userUsage.Item.UserId);
+                    await kickRefereeFromRefereeHub(roomUsage, userUsage, userUsage.Item.UserId);
+
                     await eventDispatcher.PostRefereeRemovedAsync(roomId, userUsage.Item.UserId);
                 }
             }
@@ -174,11 +175,11 @@ namespace osu.Server.Spectator.Hubs.Referee
 
         public async Task CloseRoom(long roomId)
         {
-            using (var userUsage = await refereeStates.GetForUse(Context.GetUserId()))
+            using (var closingUserUsage = await refereeStates.GetForUse(Context.GetUserId()))
             {
-                Debug.Assert(userUsage.Item != null);
+                Debug.Assert(closingUserUsage.Item != null);
 
-                ensureIsReferee(roomId, userUsage);
+                ensureIsReferee(roomId, closingUserUsage);
 
                 using (var roomUsage = await roomController.GetRoom(roomId))
                 {
@@ -189,43 +190,34 @@ namespace osu.Server.Spectator.Hubs.Referee
 
                     log("Closing room", room);
 
-                    foreach (var user in room.Users.Where(u => u.UserID != userUsage.Item.UserId).ToArray())
+                    foreach (var user in room.Users.ToArray())
                     {
                         switch (user.Role)
                         {
                             case MultiplayerRoomUserRole.Player:
-                            {
-                                using (var targetUserUsage = await playerStates.GetForUse(user.UserID))
+                                using (var targetPlayerUsage = await playerStates.GetForUse(user.UserID))
                                 {
-                                    Debug.Assert(targetUserUsage.Item != null);
+                                    Debug.Assert(targetPlayerUsage.Item != null);
 
-                                    if (!targetUserUsage.Item.IsAssociatedWithRoom(roomId))
+                                    if (!targetPlayerUsage.Item.IsAssociatedWithRoom(roomId))
                                         ThrowHelper.ThrowUserNotInRoom();
 
-                                    await roomController.KickUserFromRoom(targetUserUsage.Item, roomUsage, userUsage.Item.UserId);
+                                    await roomController.KickUserFromRoom(targetPlayerUsage.Item, roomUsage, closingUserUsage.Item.UserId);
                                 }
 
                                 break;
-                            }
 
                             case MultiplayerRoomUserRole.Referee:
-                            {
-                                using (var targetUserUsage = await refereeStates.GetForUse(user.UserID))
-                                {
-                                    Debug.Assert(targetUserUsage.Item != null);
+                                await tryKickRefereeFromMultiplayerHub(roomUsage, user.UserID, closingUserUsage.Item.UserId);
 
-                                    if (!targetUserUsage.Item.IsAssociatedWithRoom(roomId))
-                                        ThrowHelper.ThrowUserNotInRoom();
-
-                                    await roomController.KickUserFromRoom(targetUserUsage.Item, roomUsage, userUsage.Item.UserId);
-                                }
+                                if (user.UserID != closingUserUsage.Item.UserId)
+                                    await kickRefereeFromRefereeHub(roomUsage, user.UserID, closingUserUsage.Item.UserId);
 
                                 break;
-                            }
                         }
                     }
 
-                    await roomController.LeaveRoom(userUsage.Item, roomUsage);
+                    await roomController.LeaveRoom(closingUserUsage.Item, roomUsage);
                 }
             }
         }
@@ -352,27 +344,70 @@ namespace osu.Server.Spectator.Hubs.Referee
                     if (targetUserId == userUsage.Item.UserId)
                         ThrowHelper.ThrowCannotPerformOperationOnSelf();
 
-                    using (var targetUserUsage = await refereeStates.GetForUse(targetUserId))
-                    {
-                        if (targetUserUsage.Item == null || !targetUserUsage.Item.IsAssociatedWithRoom(roomId))
-                            ThrowHelper.ThrowUserNotInRoom();
+                    await tryKickRefereeFromMultiplayerHub(roomUsage, targetUserId, userUsage.Item.UserId);
+                    await kickRefereeFromRefereeHub(roomUsage, targetUserId, userUsage.Item.UserId);
 
-                        var targetUser = roomUsage.Item.Users.SingleOrDefault(u => u.UserID == targetUserId);
-
-                        if (targetUser != null)
-                        {
-                            // user is joined to the room. proceed with a full kick to flush them out.
-                            await roomController.KickUserFromRoom(targetUserUsage.Item, roomUsage, userUsage.Item.UserId);
-                        }
-                        else
-                        {
-                            // user has not joined the room yet or is temporarily disconnected. disassociate them from room so they can't join again.
-                            targetUserUsage.Item.DisassociateFromRoom(roomId);
-                        }
-
-                        await eventDispatcher.PostRefereeRemovedAsync(roomId, targetUserId);
-                    }
+                    await eventDispatcher.PostRefereeRemovedAsync(roomId, targetUserId);
                 }
+            }
+        }
+
+        private async Task tryKickRefereeFromMultiplayerHub(ItemUsage<ServerMultiplayerRoom> roomUsage, int targetUserId, int kickingUserId)
+        {
+            Debug.Assert(roomUsage.Item != null);
+
+            // the referee COULD be joined to the multiplayer hub in order to spectate the room.
+            // first, clean this up so that they don't persist in a closed room.
+            // however, this is completely optional and a missing state is NOT indicative of failure.
+            try
+            {
+                using (var playerUsage = await playerStates.GetForUse(targetUserId))
+                {
+                    Debug.Assert(playerUsage.Item != null);
+
+                    if (playerUsage.Item.IsAssociatedWithRoom(roomUsage.Item.RoomID))
+                        await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, kickingUserId);
+                }
+            }
+            catch (KeyNotFoundException)
+            {
+                // see preceding comment, this is not a failure condition.
+            }
+        }
+
+        private async Task kickRefereeFromRefereeHub(ItemUsage<ServerMultiplayerRoom> roomUsage, int targetUserId, int kickingUserId)
+        {
+            Debug.Assert(roomUsage.Item != null);
+
+            using (var refereeUsage = await refereeStates.GetForUse(targetUserId))
+            {
+                Debug.Assert(refereeUsage.Item != null);
+
+                if (!refereeUsage.Item.IsAssociatedWithRoom(roomUsage.Item.RoomID))
+                    ThrowHelper.ThrowUserNotInRoom();
+
+                await kickRefereeFromRefereeHub(roomUsage, refereeUsage, kickingUserId);
+            }
+        }
+
+        private async Task kickRefereeFromRefereeHub(ItemUsage<ServerMultiplayerRoom> roomUsage, ItemUsage<RefereeClientState> refereeUsage, int kickingUserId)
+        {
+            Debug.Assert(roomUsage.Item != null);
+
+            if (refereeUsage.Item == null || !refereeUsage.Item.IsAssociatedWithRoom(roomUsage.Item.RoomID))
+                ThrowHelper.ThrowUserNotInRoom();
+
+            var targetUser = roomUsage.Item.Users.SingleOrDefault(u => u.UserID == refereeUsage.Item.UserId);
+
+            if (targetUser != null)
+            {
+                // user is joined to the room. proceed with a full kick to flush them out.
+                await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, kickingUserId);
+            }
+            else
+            {
+                // user has not joined the room yet or is temporarily disconnected. disassociate them from room so they can't join again.
+                refereeUsage.Item.DisassociateFromRoom(roomUsage.Item.RoomID);
             }
         }
 
@@ -598,7 +633,7 @@ namespace osu.Server.Spectator.Hubs.Referee
             }
         }
 
-        public async Task Roll(long roomId, RollRequest request)
+        public async Task Roll(long roomId, RollRequest? request)
         {
             using (var userUsage = await refereeStates.GetForUse(Context.GetUserId()))
             {
@@ -615,7 +650,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                     if (user == null)
                         ThrowHelper.ThrowUserNotInRoom();
 
-                    await roomUsage.Item.MatchController.HandleUserRequest(user, new Game.Online.Multiplayer.RollRequest { Max = request.Max });
+                    await roomUsage.Item.MatchController.HandleUserRequest(user, new Game.Online.Multiplayer.RollRequest { Max = request?.Max });
                 }
             }
         }
@@ -766,7 +801,11 @@ namespace osu.Server.Spectator.Hubs.Referee
                 foreach (long roomId in userUsage.Item.RefereedRoomIds.ToArray())
                 {
                     using (var roomUsage = await roomController.GetRoom(roomId))
+                    {
+                        await tryKickRefereeFromMultiplayerHub(roomUsage, userUsage.Item.UserId, userUsage.Item.UserId);
                         await roomController.LeaveRoom(userUsage.Item, roomUsage);
+                    }
+
                     await eventDispatcher.PostRefereeRemovedAsync(roomId, userUsage.Item.UserId);
                 }
 
@@ -785,6 +824,6 @@ namespace osu.Server.Spectator.Hubs.Referee
         }
 
         private void log(string message, ServerMultiplayerRoom? room, LogLevel level = LogLevel.Information)
-            => logger.Log(level, "[user:{userId}] [room:{roomId}] {message}", Context.UserIdentifier, room?.RoomID.ToString() ?? "none", message);
+            => Log($"[room:{room?.RoomID.ToString() ?? "none"}] {message}", level);
     }
 }

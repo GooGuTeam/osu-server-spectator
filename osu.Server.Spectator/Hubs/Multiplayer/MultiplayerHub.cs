@@ -211,7 +211,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                     room.Log($"Transferring host from {room.Host?.UserID} to {userId}");
 
-                    ensureIsHost(room);
+                    ensureIsHostOrReferee(room);
 
                     await room.SetHost(userId);
                 }
@@ -236,7 +236,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     if (userId == userUsage.Item.UserId)
                         throw new InvalidStateException("Can't kick self");
 
-                    ensureIsHost(room);
+                    ensureIsHostOrReferee(room);
 
                     var kickTarget = room.Users.FirstOrDefault(u => u.UserID == userId);
 
@@ -352,12 +352,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     switch (request)
                     {
                         case StartMatchCountdownRequest startMatchCountdownRequest:
-                            ensureIsHost(room);
+                            ensureIsHostOrReferee(room);
                             await room.StartMatchCountdown(startMatchCountdownRequest.Duration);
                             break;
 
                         case StopCountdownRequest stopCountdownRequest:
-                            ensureIsHost(room);
+                            ensureIsHostOrReferee(room);
                             await room.StopCountdown(stopCountdownRequest.ID);
                             break;
 
@@ -382,9 +382,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     if (room == null)
                         throw new InvalidOperationException("Attempted to operate on a null room");
 
-                    ensureIsHost(room);
+                    ensureIsHostOrReferee(room);
 
-                    if (room.Host != null && room.Host.State != MultiplayerUserState.Spectating && room.Host.State != MultiplayerUserState.Ready)
+                    if (room.Host != null && room.Host.State != MultiplayerUserState.Spectating && room.Host.State != MultiplayerUserState.Ready && room.Host.Role != MultiplayerRoomUserRole.Referee)
                         throw new InvalidStateException("Can't start match when the host is not ready.");
 
                     if (room.Users.All(u => u.State != MultiplayerUserState.Ready))
@@ -407,7 +407,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     if (room == null)
                         throw new InvalidOperationException("Attempted to operate on a null room");
 
-                    ensureIsHost(room);
+                    ensureIsHostOrReferee(room);
 
                     await room.AbortMatch();
                 }
@@ -512,7 +512,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     if (room == null)
                         throw new InvalidOperationException("Attempted to operate on a null room");
 
-                    ensureIsHost(room);
+                    ensureIsHostOrReferee(room);
 
                     settings.Name = await chatFilters.FilterAsync(settings.Name);
                     await room.ChangeRoomSettings(settings);
@@ -537,9 +537,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <summary>
         /// Ensure the local user is the host of the room, and throw if they are not.
         /// </summary>
-        private void ensureIsHost(MultiplayerRoom room)
+        private void ensureIsHostOrReferee(MultiplayerRoom room)
         {
-            if (room.Host?.UserID != Context.GetUserId())
+            bool isHost = room.Host?.UserID == Context.GetUserId();
+            bool isReferee = room.Users.FirstOrDefault(u => u.UserID == Context.GetUserId())?.Role == MultiplayerRoomUserRole.Referee;
+
+            if (!isHost && !isReferee)
                 throw new NotHostException();
         }
 
