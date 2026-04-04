@@ -533,13 +533,11 @@ namespace osu.Server.Spectator.Database
             var connection = await getConnectionAsync();
 
             return await connection.QueryAsync<int>(
-                "SELECT zebra_id FROM relationship r "
-                + "JOIN lazer_users u ON r.zebra_id = u.id "
+                "SELECT r.target_id FROM relationship r "
+                + "JOIN lazer_users u ON r.target_id = u.id "
                 + "WHERE r.user_id = @UserId "
-                + "AND friend = 1", new
-                {
-                    UserId = userId
-                });
+                + "AND r.type = 'Friend' "
+                + "AND u.priv = 1", new { UserId = userId });
         }
 
         public async Task<bool> GetUserAllowsPMs(int userId)
@@ -725,7 +723,7 @@ namespace osu.Server.Spectator.Database
         {
             var connection = await getConnectionAsync();
             return await connection.QueryAsync<beatmap_sync>(
-                "SELECT `beatmapset_id`, `updated_at` FROM beatmap_sync WHERE updated_at > @After",
+                "SELECT `beatmapset_id`, `updated_at` FROM beatmapsync WHERE updated_at > @After",
                 new { After = after });
         }
 
