@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
@@ -13,6 +14,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
 {
     public class ResultsStage : RankedPlayStageImplementation
     {
+        /// <summary>
+        /// Amount of time to wait for scores to arrive in the database before continuing.
+        /// </summary>
+        public TimeSpan ScoreRetrievalWaitTime { get; set; } = TimeSpan.FromSeconds(10);
+
         public ResultsStage(RankedPlayMatchController controller)
             : base(controller)
         {
@@ -25,8 +31,27 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
         {
             // Collect all scores from the database.
             List<SoloScore> scores = [];
+
             using (var db = DbFactory.GetInstance())
-                scores.AddRange(await db.GetAllScoresForPlaylistItem(Room.RoomID, Room.Settings.PlaylistItemId));
+            {
+                // Wait up to ScoreRetrievalWaitTime to retrieve scores for all players, before continuing and giving them 0 score.
+                using (var cts = new CancellationTokenSource(ScoreRetrievalWaitTime))
+                {
+                    SoloScore[] retrievedScores = [];
+
+                    while (!cts.IsCancellationRequested)
+                    {
+                        retrievedScores = (await db.GetAllScoresForPlaylistItem(Room.RoomID, Room.Settings.PlaylistItemId)).ToArray();
+
+                        if (retrievedScores.Length == State.Users.Count)
+                            break;
+
+                        await Task.Delay(1000, CancellationToken.None);
+                    }
+
+                    scores.AddRange(retrievedScores);
+                }
+            }
 
             // Add dummy scores for all users that did not play the map.
             foreach ((int userId, _) in State.Users)
@@ -56,6 +81,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
                     NewLife = newLife,
                 };
             }
+
+            SoloScore[] winningScores = scores.Where(u => u.total_score == maxTotalScore).ToArray();
+            if (winningScores.Length == 1)
+                incrementRoundsWonIfPresent(State.Users[(int)winningScores.Single().user_id]);
         }
 
         protected override async Task Finish()
@@ -83,6 +112,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
             int countPlayersAlive = State.Users.Count(u => u.Value.Life > 0);
             int countCardsRemaining = Controller.DeckCount + State.Users.Sum(u => u.Value.Hand.Count);
             return countPlayersAlive > 1 && countCardsRemaining > 0;
+        }
+
+        private static void incrementRoundsWonIfPresent(RankedPlayUserInfo userInfo)
+        {
+            var roundsWonProperty = userInfo.GetType().GetProperty("RoundsWon");
+
+            if (roundsWonProperty?.PropertyType != typeof(int) || !roundsWonProperty.CanRead || !roundsWonProperty.CanWrite)
+                return;
+
+            int currentValue = (int)(roundsWonProperty.GetValue(userInfo) ?? 0);
+            roundsWonProperty.SetValue(userInfo, currentValue + 1);
         }
     }
 }

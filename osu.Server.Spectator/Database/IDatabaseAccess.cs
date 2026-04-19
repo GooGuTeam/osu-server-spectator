@@ -61,9 +61,9 @@ namespace osu.Server.Spectator.Database
         Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId);
 
         /// <summary>
-        /// Marks the given <paramref name="room"/> as active and accepting new players.
+        /// Sets the end date of the <paramref name="room"/>.
         /// </summary>
-        Task MarkRoomActiveAsync(MultiplayerRoom room);
+        Task SetRoomEndDateAsync(MultiplayerRoom room, DateTimeOffset? endDate);
 
         /// <summary>
         /// Updates the current settings of <paramref name="room"/> in the database.
@@ -319,5 +319,7 @@ namespace osu.Server.Spectator.Database
         Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
 
         Task InsertUserEloHistoryEntry(ulong roomId, uint poolId, uint userId, uint opponentId, matchmaking_room_result result, int eloBefore, int eloAfter);
+
+        Task<int[]> GetMatchmakingPoolRatingsAsync(uint poolId);
     }
 }

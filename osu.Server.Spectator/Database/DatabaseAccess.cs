@@ -245,13 +245,14 @@ namespace osu.Server.Spectator.Database
                 new { BeatmapSetId = beatmapSetId })).ToArray();
         }
 
-        public async Task MarkRoomActiveAsync(MultiplayerRoom room)
+        public async Task SetRoomEndDateAsync(MultiplayerRoom room, DateTimeOffset? endDate)
         {
             var connection = await getConnectionAsync();
 
-            await connection.ExecuteAsync("UPDATE rooms SET ends_at = null WHERE id = @RoomID", new
+            await connection.ExecuteAsync("UPDATE rooms SET ends_at = @EndDate WHERE id = @RoomID", new
             {
-                RoomID = room.RoomID
+                RoomID = room.RoomID,
+                EndDate = endDate
             });
         }
 
@@ -372,10 +373,10 @@ namespace osu.Server.Spectator.Database
 
             return await connection.QuerySingleAsync<multiplayer_playlist_item>(
                 "SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.id = @Id AND p.room_id = @RoomId", new
-            {
-                Id = playlistItemId,
-                RoomId = roomId
-            });
+                {
+                    Id = playlistItemId,
+                    RoomId = roomId
+                });
         }
 
         public async Task<long> AddPlaylistItemAsync(multiplayer_playlist_item item)
@@ -471,9 +472,9 @@ namespace osu.Server.Spectator.Database
 
             return (await connection.QueryAsync<multiplayer_playlist_item>(
                 "SELECT p.*, b.difficulty_rating FROM room_playlists p JOIN beatmaps b ON p.beatmap_id = b.id WHERE p.room_id = @RoomId", new
-            {
-                RoomId = roomId
-            })).ToArray();
+                {
+                    RoomId = roomId
+                })).ToArray();
         }
 
         public async Task MarkScoreHasReplay(Score score)
@@ -765,9 +766,9 @@ namespace osu.Server.Spectator.Database
             return (await connection.QueryAsync<matchmaking_pool_beatmap>("SELECT p.*, b.playmode, b.checksum, b.difficulty_rating FROM `matchmaking_pool_beatmaps` p "
                                                                           + "JOIN `beatmaps` b ON p.beatmap_id = b.id "
                                                                           + "WHERE p.pool_id = @PoolId", new
-            {
-                PoolId = poolId
-            })).ToArray();
+                                                                          {
+                                                                              PoolId = poolId
+                                                                          })).ToArray();
         }
 
         public async Task<database_beatmap[]> GetMatchmakingGlobalPoolBeatmapsAsync(int rulesetId, int variant)
@@ -847,13 +848,13 @@ namespace osu.Server.Spectator.Database
                                           + "`total_points` = @TotalPoints, "
                                           + "`elo_data` = @EloData, "
                                           + "`updated_at` = NOW()", new
-            {
-                UserId = stats.user_id,
-                PoolId = stats.pool_id,
-                FirstPlacements = stats.first_placements,
-                TotalPoints = stats.total_points,
-                EloData = stats.elo_data
-            });
+                                          {
+                                              UserId = stats.user_id,
+                                              PoolId = stats.pool_id,
+                                              FirstPlacements = stats.first_placements,
+                                              TotalPoints = stats.total_points,
+                                              EloData = stats.elo_data
+                                          });
         }
 
         public async Task InsertUserEloHistoryEntry(ulong roomId, uint poolId, uint userId, uint opponentId, matchmaking_room_result result, int eloBefore, int eloAfter)
@@ -862,15 +863,15 @@ namespace osu.Server.Spectator.Database
 
             await connection.ExecuteAsync("INSERT INTO `matchmaking_user_elo_history` (room_id, pool_id, user_id, opponent_id, result, elo_before, elo_after, created_at, updated_at) "
                                           + "VALUES (@RoomId, @PoolId, @UserId, @OpponentId, @Result, @EloBefore, @EloAfter, NOW(), NOW())", new
-            {
-                RoomId = roomId,
-                PoolId = poolId,
-                UserId = userId,
-                OpponentId = opponentId,
-                Result = result.ToString(),
-                EloBefore = eloBefore,
-                EloAfter = eloAfter
-            });
+                                          {
+                                              RoomId = roomId,
+                                              PoolId = poolId,
+                                              UserId = userId,
+                                              OpponentId = opponentId,
+                                              Result = result.ToString(),
+                                              EloBefore = eloBefore,
+                                              EloAfter = eloAfter
+                                          });
         }
 
         public async Task UpdateUserOnlineStatusAsync(int userId, bool isOnline)
@@ -879,6 +880,16 @@ namespace osu.Server.Spectator.Database
             await connection.ExecuteAsync(
                 "UPDATE lazer_users SET is_online = @IsOnline WHERE id = @UserId",
                 new { IsOnline = isOnline, UserId = userId });
+        }
+
+        public async Task<int[]> GetMatchmakingPoolRatingsAsync(uint poolId)
+        {
+            var connection = await getConnectionAsync();
+
+            return (await connection.QueryAsync<matchmaking_user_stats>("SELECT * FROM matchmaking_user_stats WHERE pool_id = @PoolId", new
+            {
+                PoolId = poolId
+            })).Select(stats => (int)Math.Round(stats.EloData.Rating.Mu)).ToArray();
         }
 
         public void Dispose()
