@@ -85,6 +85,15 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
             await eventDispatcher.PostMatchUserStateChangedAsync(room.RoomID, user.UserID, user.MatchState);
         }
 
+        public async Task SetLockState(bool locked)
+        {
+            if (state.Locked == locked)
+                return;
+
+            state.Locked = locked;
+            await eventDispatcher.PostMatchRoomStateChangedAsync(room);
+        }
+
         /// <summary>
         /// For a user joining the room, this will provide the most appropriate team for the new user to keep the room balanced.
         /// </summary>
