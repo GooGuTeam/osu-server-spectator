@@ -20,6 +20,7 @@ using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Referee;
 using osu.Server.Spectator.Hubs.Referee.Models;
 using osu.Server.Spectator.Hubs.Referee.Models.Events;
+using StackExchange.Redis;
 using MatchType = osu.Server.Spectator.Hubs.Referee.Models.MatchType;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
@@ -38,17 +39,20 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private readonly IDatabaseFactory databaseFactory;
         private readonly IHubContext<MultiplayerHub> multiplayerHubContext;
         private readonly IHubContext<RefereeHub> refereeHubContext;
+        private readonly IConnectionMultiplexer redis;
         private readonly ILogger<MultiplayerEventDispatcher> logger;
 
         public MultiplayerEventDispatcher(
             IDatabaseFactory databaseFactory,
             IHubContext<MultiplayerHub> multiplayerHubContext,
             IHubContext<RefereeHub> refereeHubContext,
+            IConnectionMultiplexer redis,
             ILoggerFactory loggerFactory)
         {
             this.databaseFactory = databaseFactory;
             this.multiplayerHubContext = multiplayerHubContext;
             this.refereeHubContext = refereeHubContext;
+            this.redis = redis;
             logger = loggerFactory.CreateLogger<MultiplayerEventDispatcher>();
         }
 
@@ -199,11 +203,50 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         public async Task PostCountdownStartedAsync<T>(long roomId, T countdown)
             where T : MultiplayerCountdown
         {
-            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new Game.Online.Multiplayer.Countdown.CountdownStartedEvent(countdown));
+            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new osu.Game.Online.Multiplayer.Countdown.CountdownStartedEvent(countdown));
 
             var refereeEvent = CountdownStartedEvent.Create(roomId, countdown);
             if (refereeEvent != null)
                 await refereeHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IRefereeHubClient.CountdownStarted), refereeEvent);
+        }
+
+        /// <summary>
+        /// A periodic countdown tick reminder.
+        /// </summary>
+        public async Task PostCountdownTickAsync(long roomId, int countdownId, double seconds)
+        {
+            // Send to player clients as a MatchServerEvent
+            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new osu.Game.Online.Multiplayer.Countdown.CountdownTickEvent(countdownId, seconds));
+
+            // Also notify referee clients
+            var refereeEvent = new CountdownTickEvent
+            {
+                RoomId = roomId,
+                CountdownId = countdownId,
+                Seconds = seconds,
+            };
+
+            await refereeHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IRefereeHubClient.CountdownTick), refereeEvent);
+
+            // Publish to Redis for external systems (e.g. g0v0-server)
+            try
+            {
+                string tickMessage = JsonConvert.SerializeObject(new
+                {
+                    type = "CountdownTick",
+                    room_id = roomId,
+                    countdown_id = countdownId,
+                    seconds,
+                });
+
+                await redis.GetSubscriber().PublishAsync(
+                    new RedisChannel($"osu-channel:room:{roomId}", RedisChannel.PatternMode.Literal),
+                    tickMessage);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to publish countdown tick to Redis for room {RoomId}", roomId);
+            }
         }
 
         /// <summary>
@@ -214,7 +257,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         public async Task PostCountdownStoppedAsync<T>(long roomId, T countdown)
             where T : MultiplayerCountdown
         {
-            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new Game.Online.Multiplayer.Countdown.CountdownStoppedEvent(countdown.ID));
+            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new osu.Game.Online.Multiplayer.Countdown.CountdownStoppedEvent(countdown.ID));
 
             var refereeEvent = CountdownStoppedEvent.Create(roomId, countdown);
             if (refereeEvent != null)

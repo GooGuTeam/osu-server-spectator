@@ -120,6 +120,11 @@ namespace osu.Server.Spectator.Hubs.Referee
         Task CountdownStopped(CountdownStoppedEvent info);
 
         /// <summary>
+        /// A countdown tick reminder in a room.
+        /// </summary>
+        Task CountdownTick(CountdownTickEvent info);
+
+        /// <summary>
         /// A match in a room has started.
         /// </summary>
         Task MatchStarted(MatchStartedEvent info);

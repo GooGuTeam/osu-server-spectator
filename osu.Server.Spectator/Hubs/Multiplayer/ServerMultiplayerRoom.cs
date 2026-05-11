@@ -1080,15 +1080,44 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             async Task start()
             {
-                // Run the countdown.
+                // Run the countdown and emit periodic tick reminders.
+                bool cancelled = false;
+
                 try
                 {
+                    var endTime = countdownInfo.StartTime + countdownInfo.Duration;
+                    var reminderThresholds = buildReminderThresholds((int)Math.Ceiling(countdownInfo.Duration.TotalSeconds));
+                    var emittedThresholds = new HashSet<int>();
+
                     using (var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(countdownInfo.StopSource.Token, countdownInfo.SkipSource.Token))
-                        await Task.Delay(countdownInfo.Duration, cancellationSource.Token).ConfigureAwait(false);
+                    {
+                        while (true)
+                        {
+                            var remaining = endTime - DateTimeOffset.Now;
+                            if (remaining <= TimeSpan.Zero)
+                                break;
+
+                            int remainingSeconds = (int)Math.Ceiling(remaining.TotalSeconds);
+
+                            if (reminderThresholds.Contains(remainingSeconds) && emittedThresholds.Add(remainingSeconds))
+                                await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, remainingSeconds);
+
+                            var nextSleep = TimeSpan.FromMilliseconds(Math.Min(remaining.TotalMilliseconds, 250));
+                            await Task.Delay(nextSleep, cancellationSource.Token).ConfigureAwait(false);
+                        }
+                    }
                 }
                 catch (OperationCanceledException)
                 {
+                    cancelled = true;
                     // Clients need to be notified of cancellations in the following code.
+                }
+
+                if (!cancelled)
+                {
+                    var reminderThresholds = buildReminderThresholds((int)Math.Ceiling(countdownInfo.Duration.TotalSeconds));
+                    if (reminderThresholds.Contains(0))
+                        await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, 0);
                 }
 
                 // Notify users that the countdown has finished (or cancelled) and run the continuation.
@@ -1119,6 +1148,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     }
                 }
             }
+        }
+
+        private static HashSet<int> buildReminderThresholds(int durationSeconds)
+        {
+            var thresholds = new HashSet<int>();
+
+            for (int seconds = 60; seconds <= durationSeconds; seconds += 60)
+                thresholds.Add(seconds);
+
+            foreach (int seconds in new[] { 30, 10, 5, 0 })
+            {
+                if (seconds <= durationSeconds)
+                    thresholds.Add(seconds);
+            }
+
+            return thresholds;
         }
 
         /// <summary>
