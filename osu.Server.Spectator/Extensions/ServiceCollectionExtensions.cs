@@ -33,6 +33,7 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<IScoreStorage, ServerScoreStorage>()
                                     .AddSingleton<ScoreUploader>()
                                     .AddSingleton<IScoreProcessedSubscriber, ScoreProcessedSubscriber>()
+                                    .AddHostedService<MultiplayerRoomRedisSubscriber>()
                                     .AddSingleton<BuildUserCountUpdater>()
                                     .AddSingleton<ChatFilters>()
                                     .AddSingleton<IDailyChallengeUpdater, DailyChallengeUpdater>()
@@ -43,7 +44,7 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<RulesetManager>()
                                     .AddHostedService<RulesetInitializer>()
                                     .AddSingleton<IMultiplayerRoomController, MultiplayerRoomController>()
-                                        .AddHostedService<MultiplayerRoomLifetimeBackgroundService>();
+                                    .AddHostedService<MultiplayerRoomLifetimeBackgroundService>();
         }
 
         /// <summary>
