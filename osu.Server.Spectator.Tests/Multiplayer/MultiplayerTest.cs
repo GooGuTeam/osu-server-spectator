@@ -125,6 +125,9 @@ namespace osu.Server.Spectator.Tests.Multiplayer
       var refereeHubContext = new Mock<IHubContext<RefereeHub>>();
       refereeHubContext.Setup(ctx => ctx.Clients.Group(It.IsAny<string>())).Returns(new Mock<ISingleClientProxy>().Object);
 
+      var mockRedis = new Mock<IConnectionMultiplexer>();
+      mockRedis.Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(new Mock<IDatabase>().Object);
+
       Groups.Setup(g => g.AddToGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<string, string, CancellationToken>((connectionId, groupId, _) =>
             {
@@ -163,47 +166,48 @@ namespace osu.Server.Spectator.Tests.Multiplayer
               .Returns<int, MultiplayerRoom, bool>((_, room, _) => Task.FromResult(room.RoomID));
 
       RulesetManager = new RulesetManager(
-          new Mock<ILogger<RulesetManager>>().Object,
-          new MemoryCache(new MemoryCacheOptions()),
-          LegacyIO.Object);
+        new Mock<ILogger<RulesetManager>>().Object,
+        new MemoryCache(new MemoryCacheOptions()),
+        LegacyIO.Object);
 
       EventDispatcher = new MultiplayerEventDispatcher(
-          DatabaseFactory.Object,
-          multiplayerHubContext.Object,
-          refereeHubContext.Object,
-          LoggerFactory.Object);
+        DatabaseFactory.Object,
+        multiplayerHubContext.Object,
+        refereeHubContext.Object,
+        mockRedis.Object,
+        LoggerFactory.Object);
 
       RoomController = new MultiplayerRoomController(
-          Rooms,
-          UserStates,
-          RefereeStates,
-          DatabaseFactory.Object,
-          EventDispatcher,
-          LoggerFactory.Object,
-          LegacyIO.Object,
-          RulesetManager);
+        Rooms,
+        UserStates,
+        RefereeStates,
+        DatabaseFactory.Object,
+        EventDispatcher,
+        LoggerFactory.Object,
+        LegacyIO.Object,
+        RulesetManager);
 
       MatchmakingBackgroundService = new MatchmakingQueueBackgroundService(
-          multiplayerHubContext.Object,
-          LegacyIO.Object,
-          DatabaseFactory.Object,
-          LoggerFactory.Object,
-          Rooms,
-          RoomController,
-          new MemoryCache(new MemoryCacheOptions()),
-          EventDispatcher,
-          RulesetManager);
+        multiplayerHubContext.Object,
+        LegacyIO.Object,
+        DatabaseFactory.Object,
+        LoggerFactory.Object,
+        Rooms,
+        RoomController,
+        new MemoryCache(new MemoryCacheOptions()),
+        EventDispatcher,
+        RulesetManager);
 
       Hub = new TestMultiplayerHub(
-          LoggerFactory.Object,
-          UserStates,
-          DatabaseFactory.Object,
-          new ChatFilters(DatabaseFactory.Object),
-          RoomController,
-          LegacyIO.Object,
-          EventDispatcher,
-          RulesetManager,
-          MatchmakingBackgroundService);
+        LoggerFactory.Object,
+        UserStates,
+        DatabaseFactory.Object,
+        new ChatFilters(DatabaseFactory.Object),
+        RoomController,
+        LegacyIO.Object,
+        EventDispatcher,
+        RulesetManager,
+        MatchmakingBackgroundService);
       Hub.Groups = Groups.Object;
       Hub.Clients = Clients.Object;
 
@@ -341,8 +345,7 @@ namespace osu.Server.Spectator.Tests.Multiplayer
               .Callback<long, long>((roomId, playlistItemId) => playlistItems.RemoveAll(i => i.room_id == roomId && i.id == playlistItemId));
     }
 
-    protected void InitialiseRoom(long roomId)
-        => InitialiseRoom(roomId, 1);
+    protected void InitialiseRoom(long roomId) => InitialiseRoom(roomId, 1);
 
     protected void InitialiseRoom(long roomId, int playlistItemCount)
     {
