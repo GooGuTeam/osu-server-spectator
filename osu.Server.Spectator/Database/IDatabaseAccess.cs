@@ -11,315 +11,330 @@ using osu.Server.Spectator.Database.Models;
 
 namespace osu.Server.Spectator.Database
 {
-    public interface IDatabaseAccess : IDisposable
-    {
-        /// <summary>
-        /// Returns the database ID of the user to whom the supplied <paramref name="jwtToken"/> belongs.
-        /// Will be <c>null</c> if the token does not exist, has expired or has been revoked.
-        /// </summary>
-        Task<int?> GetUserIdFromTokenAsync(JsonWebToken jwtToken);
+  public interface IDatabaseAccess : IDisposable
+  {
+    /// <summary>
+    /// Returns the database ID of the user to whom the supplied <paramref name="jwtToken"/> belongs.
+    /// Will be <c>null</c> if the token does not exist, has expired or has been revoked.
+    /// </summary>
+    Task<int?> GetUserIdFromTokenAsync(JsonWebToken jwtToken);
 
-        /// <summary>
-        /// Whether the user with the given <paramref name="userId"/> is currently restricted.
-        /// </summary>
-        Task<bool> IsUserRestrictedAsync(int userId);
+    /// <summary>
+    /// Whether the user with the given <paramref name="userId"/> is currently restricted.
+    /// </summary>
+    Task<bool> IsUserRestrictedAsync(int userId);
 
-        /// <summary>
-        /// Returns a username from a <paramref name="userId"/>.
-        /// </summary>
-        Task<string?> GetUsernameAsync(int userId);
+    /// <summary>
+    /// Returns a username from a <paramref name="userId"/>.
+    /// </summary>
+    Task<string?> GetUsernameAsync(int userId);
 
-        /// <summary>
-        /// Returns the IDs of all users in groups with the given <see cref="groupIds"/>.
-        /// </summary>
-        Task<int[]> GetUsersInGroupsAsync(int[] groupIds);
+    /// <summary>
+    /// Returns the IDs of all users in groups with the given <see cref="groupIds"/>.
+    /// </summary>
+    Task<int[]> GetUsersInGroupsAsync(int[] groupIds);
 
-        /// <summary>
-        /// Returns the <see cref="multiplayer_room"/> with the given <paramref name="roomId"/>.
-        /// </summary>
-        Task<multiplayer_room?> GetRoomAsync(long roomId);
+    /// <summary>
+    /// Returns the <see cref="multiplayer_room"/> with the given <paramref name="roomId"/>.
+    /// </summary>
+    Task<multiplayer_room?> GetRoomAsync(long roomId);
 
-        /// <summary>
-        /// Returns the <see cref="multiplayer_room"/> with the given <paramref name="roomId"/>.
-        /// Rooms of type <see cref="database_match_type.playlists"/> are not returned by this method.
-        /// </summary>
-        Task<multiplayer_room?> GetRealtimeRoomAsync(long roomId);
+    /// <summary>
+    /// Returns the <see cref="multiplayer_room"/> with the given <paramref name="roomId"/>.
+    /// Rooms of type <see cref="database_match_type.playlists"/> are not returned by this method.
+    /// </summary>
+    Task<multiplayer_room?> GetRealtimeRoomAsync(long roomId);
 
-        /// <summary>
-        /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>.
-        /// </summary>
-        Task<database_beatmap?> GetBeatmapAsync(int beatmapId);
+    /// <summary>
+    /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>.
+    /// </summary>
+    Task<database_beatmap?> GetBeatmapAsync(int beatmapId);
 
-        /// <summary>
-        /// Retrieves beatmaps corresponding to the given <paramref name="beatmapIds"/>.
-        /// </summary>
-        Task<database_beatmap[]> GetBeatmapsAsync(int[] beatmapIds);
+    /// <summary>
+    /// Retrieves beatmaps corresponding to the given <paramref name="beatmapIds"/>.
+    /// </summary>
+    Task<database_beatmap[]> GetBeatmapsAsync(int[] beatmapIds);
 
-        /// <summary>
-        /// Retrieves all beatmaps corresponding to the given <paramref name="beatmapSetId"/>.
-        /// </summary>
-        Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId);
+    /// <summary>
+    /// Retrieves all beatmaps corresponding to the given <paramref name="beatmapSetId"/>.
+    /// </summary>
+    Task<database_beatmap[]> GetBeatmapsAsync(int beatmapSetId);
 
-        /// <summary>
-        /// Sets the end date of the <paramref name="room"/>.
-        /// </summary>
-        Task SetRoomEndDateAsync(MultiplayerRoom room, DateTimeOffset? endDate);
+    /// <summary>
+    /// Sets the end date of the <paramref name="room"/>.
+    /// </summary>
+    Task SetRoomEndDateAsync(MultiplayerRoom room, DateTimeOffset? endDate);
 
-        /// <summary>
-        /// Updates the current settings of <paramref name="room"/> in the database.
-        /// </summary>
-        Task UpdateRoomSettingsAsync(MultiplayerRoom room);
+    /// <summary>
+    /// Updates the current settings of <paramref name="room"/> in the database.
+    /// </summary>
+    Task UpdateRoomSettingsAsync(MultiplayerRoom room);
 
-        /// <summary>
-        /// Updates the current status of <paramref name="room"/> in the database.
-        /// </summary>
-        Task UpdateRoomStatusAsync(MultiplayerRoom room);
+    /// <summary>
+    /// Updates the current status of <paramref name="room"/> in the database.
+    /// </summary>
+    Task UpdateRoomStatusAsync(MultiplayerRoom room);
 
-        /// <summary>
-        /// Updates the current host of <paramref name="room"/> in the database.
-        /// </summary>
-        Task UpdateRoomHostAsync(MultiplayerRoom room);
+    /// <summary>
+    /// Updates the current host of <paramref name="room"/> in the database.
+    /// </summary>
+    Task UpdateRoomHostAsync(MultiplayerRoom room);
 
-        /// <summary>
-        /// Add a new participant for the specified <paramref name="room"/> in the database.
-        /// </summary>
-        Task AddRoomParticipantAsync(MultiplayerRoom room, MultiplayerRoomUser user);
+    /// <summary>
+    /// Add a new participant for the specified <paramref name="room"/> in the database.
+    /// </summary>
+    Task AddRoomParticipantAsync(MultiplayerRoom room, MultiplayerRoomUser user);
 
-        /// <summary>
-        /// Adds a login entry for the specified user.
-        /// </summary>
-        Task AddLoginForUserAsync(int userId, string? userIp);
+    /// <summary>
+    /// Adds a login entry for the specified user.
+    /// </summary>
+    Task AddLoginForUserAsync(int userId, string? userIp);
 
-        /// <summary>
-        /// Remove a new participant for the specified <paramref name="room"/> in the database.
-        /// </summary>
-        Task RemoveRoomParticipantAsync(MultiplayerRoom room, MultiplayerRoomUser user);
+    /// <summary>
+    /// Remove a new participant for the specified <paramref name="room"/> in the database.
+    /// </summary>
+    Task RemoveRoomParticipantAsync(MultiplayerRoom room, MultiplayerRoomUser user);
 
-        /// <summary>
-        /// Retrieves a playlist item from a room.
-        /// </summary>
-        /// <param name="roomId">The room.</param>
-        /// <param name="playlistItemId">The playlist item.</param>
-        Task<multiplayer_playlist_item> GetPlaylistItemAsync(long roomId, long playlistItemId);
+    /// <summary>
+    /// Retrieves a playlist item from a room.
+    /// </summary>
+    /// <param name="roomId">The room.</param>
+    /// <param name="playlistItemId">The playlist item.</param>
+    Task<multiplayer_playlist_item> GetPlaylistItemAsync(long roomId, long playlistItemId);
 
-        /// <summary>
-        /// Creates a new playlist item.
-        /// </summary>
-        /// <returns>The playlist item ID.</returns>
-        Task<long> AddPlaylistItemAsync(multiplayer_playlist_item item);
+    /// <summary>
+    /// Creates a new playlist item.
+    /// </summary>
+    /// <returns>The playlist item ID.</returns>
+    Task<long> AddPlaylistItemAsync(multiplayer_playlist_item item);
 
-        /// <summary>
-        /// Updates an existing playlist item.
-        /// </summary>
-        /// <param name="item">The new playlist item settings.</param>
-        Task UpdatePlaylistItemAsync(multiplayer_playlist_item item);
+    /// <summary>
+    /// Updates an existing playlist item.
+    /// </summary>
+    /// <param name="item">The new playlist item settings.</param>
+    Task UpdatePlaylistItemAsync(multiplayer_playlist_item item);
 
-        /// <summary>
-        /// Removes a playlist item.
-        /// </summary>
-        /// <param name="roomId">The room.</param>
-        /// <param name="playlistItemId">The playlist item ID to remove.</param>
-        Task RemovePlaylistItemAsync(long roomId, long playlistItemId);
+    /// <summary>
+    /// Removes a playlist item.
+    /// </summary>
+    /// <param name="roomId">The room.</param>
+    /// <param name="playlistItemId">The playlist item ID to remove.</param>
+    Task RemovePlaylistItemAsync(long roomId, long playlistItemId);
 
-        /// <summary>
-        /// Marks a playlist item as having been played.
-        /// </summary>
-        Task MarkPlaylistItemAsPlayedAsync(long roomId, long playlistItemId);
+    /// <summary>
+    /// Marks a playlist item as having been played.
+    /// </summary>
+    Task MarkPlaylistItemAsPlayedAsync(long roomId, long playlistItemId);
 
-        /// <summary>
-        /// Marks the given <paramref name="room"/> as ended and no longer accepting new players or scores.
-        /// </summary>
-        Task EndMatchAsync(MultiplayerRoom room);
+    /// <summary>
+    /// Marks the given <paramref name="room"/> as ended and no longer accepting new players or scores.
+    /// </summary>
+    Task EndMatchAsync(MultiplayerRoom room);
 
-        /// <summary>
-        /// Retrieves all playlist items.
-        /// </summary>
-        /// <param name="roomId">The room to retrieve playlist items from.</param>
-        Task<multiplayer_playlist_item[]> GetAllPlaylistItemsAsync(long roomId);
+    /// <summary>
+    /// Retrieves all playlist items.
+    /// </summary>
+    /// <param name="roomId">The room to retrieve playlist items from.</param>
+    Task<multiplayer_playlist_item[]> GetAllPlaylistItemsAsync(long roomId);
 
-        /// <summary>
-        /// Mark a score as having a replay available.
-        /// </summary>
-        /// <param name="score">The score to mark.</param>
-        Task MarkScoreHasReplay(Score score);
+    /// <summary>
+    /// Mark a score as having a replay available.
+    /// </summary>
+    /// <param name="score">The score to mark.</param>
+    Task MarkScoreHasReplay(Score score);
 
-        /// <summary>
-        /// Retrieves the <see cref="SoloScore"/> for a given score token. Will return null while the score has not yet been submitted.
-        /// </summary>
-        /// <param name="token">The score token.</param>
-        /// <returns>The <see cref="SoloScore"/>.</returns>
-        Task<SoloScore?> GetScoreFromTokenAsync(long token);
+    /// <summary>
+    /// Retrieves the <see cref="SoloScore"/> for a given score token. Will return null while the score has not yet been submitted.
+    /// </summary>
+    /// <param name="token">The score token.</param>
+    /// <returns>The <see cref="SoloScore"/>.</returns>
+    Task<SoloScore?> GetScoreFromTokenAsync(long token);
 
-        /// <summary>
-        /// Returns the <see cref="SoloScore"/> for the given ID.
-        /// </summary>
-        Task<SoloScore?> GetScoreAsync(long scoreId);
+    /// <summary>
+    /// Returns the <see cref="SoloScore"/> for the given ID.
+    /// </summary>
+    Task<SoloScore?> GetScoreAsync(long scoreId);
 
-        /// <summary>
-        /// Returns <see langword="true"/> if the score with the supplied <paramref name="scoreId"/> has been successfully processed.
-        /// </summary>
-        Task<bool> IsScoreProcessedAsync(long scoreId);
+    /// <summary>
+    /// Returns <see langword="true"/> if the score with the supplied <paramref name="scoreId"/> has been successfully processed.
+    /// </summary>
+    Task<bool> IsScoreProcessedAsync(long scoreId);
 
-        /// <summary>
-        /// Returns information about if the user with the supplied <paramref name="zebraId"/> has been added as a friend or blocked by the user with the supplied <paramref name="userId"/>.
-        /// </summary>
-        Task<phpbb_zebra?> GetUserRelation(int userId, int zebraId);
+    /// <summary>
+    /// Returns information about if the user with the supplied <paramref name="zebraId"/> has been added as a friend or blocked by the user with the supplied <paramref name="userId"/>.
+    /// </summary>
+    Task<phpbb_zebra?> GetUserRelation(int userId, int zebraId);
 
-        /// <summary>
-        /// Lists the specified user's friends.
-        /// </summary>
-        Task<IEnumerable<int>> GetUserFriendsAsync(int userId);
+    /// <summary>
+    /// Lists the specified user's friends.
+    /// </summary>
+    Task<IEnumerable<int>> GetUserFriendsAsync(int userId);
 
-        /// <summary>
-        /// Returns <see langword="true"/> if the user with the supplied <paramref name="userId"/> allows private messages from people not on their friends list.
-        /// </summary>
-        Task<bool> GetUserAllowsPMs(int userId);
+    /// <summary>
+    /// Returns <see langword="true"/> if the user with the supplied <paramref name="userId"/> allows private messages from people not on their friends list.
+    /// </summary>
+    Task<bool> GetUserAllowsPMs(int userId);
 
-        /// <summary>
-        /// Returns a single build with the given ID.
-        /// </summary>
-        /// <param name="buildId"></param>
-        /// <returns></returns>
-        Task<osu_build?> GetBuildByIdAsync(int buildId);
+    /// <summary>
+    /// Returns a single build with the given ID.
+    /// </summary>
+    /// <param name="buildId"></param>
+    /// <returns></returns>
+    Task<osu_build?> GetBuildByIdAsync(int buildId);
 
-        /// <summary>
-        /// Returns a single build with the given <paramref name="hash"/>, if one exists.
-        /// </summary>
-        Task<osu_build?> GetBuildByHashAsync(string hash);
+    /// <summary>
+    /// Returns a single build with the given <paramref name="hash"/>, if one exists.
+    /// </summary>
+    Task<osu_build?> GetBuildByHashAsync(string hash);
 
-        /// <summary>
-        /// Returns all available main builds from the lazer and tachyon release streams which support online play (<c>allow_bancho</c>).
-        /// </summary>
-        Task<IEnumerable<osu_build>> GetAllMainLazerBuildsAsync();
+    /// <summary>
+    /// Returns all available main builds from the lazer and tachyon release streams which support online play (<c>allow_bancho</c>).
+    /// </summary>
+    Task<IEnumerable<osu_build>> GetAllMainLazerBuildsAsync();
 
-        /// <summary>
-        /// Returns all known platform-specifc lazer and tachyon builds which support online play (<c>allow_bancho</c>).
-        /// </summary>
-        Task<IEnumerable<osu_build>> GetAllPlatformSpecificLazerBuildsAsync();
+    /// <summary>
+    /// Returns all known platform-specifc lazer and tachyon builds which support online play (<c>allow_bancho</c>).
+    /// </summary>
+    Task<IEnumerable<osu_build>> GetAllPlatformSpecificLazerBuildsAsync();
 
-        /// <summary>
-        /// Updates the <see cref="osu_build.users"/> count of a given <paramref name="build"/>.
-        /// </summary>
-        Task UpdateBuildUserCountAsync(osu_build build);
+    /// <summary>
+    /// Updates the <see cref="osu_build.users"/> count of a given <paramref name="build"/>.
+    /// </summary>
+    Task UpdateBuildUserCountAsync(osu_build build);
 
-        /// <summary>
-        /// Retrieves all <see cref="chat_filter"/>s from the database.
-        /// </summary>
-        Task<IEnumerable<chat_filter>> GetAllChatFiltersAsync();
+    /// <summary>
+    /// Retrieves all <see cref="chat_filter"/>s from the database.
+    /// </summary>
+    Task<IEnumerable<chat_filter>> GetAllChatFiltersAsync();
 
-        /// <summary>
-        /// Retrieves all active rooms from the <see cref="room_category.daily_challenge"/> category.
-        /// </summary>
-        Task<IEnumerable<multiplayer_room>> GetActiveDailyChallengeRoomsAsync();
+    /// <summary>
+    /// Retrieves all active rooms from the <see cref="room_category.daily_challenge"/> category.
+    /// </summary>
+    Task<IEnumerable<multiplayer_room>> GetActiveDailyChallengeRoomsAsync();
 
-        /// <summary>
-        /// If <paramref name="scoreId"/> is associated with a multiplayer score, returns the room ID and playlist item ID which the score was set on.
-        /// Otherwise, returns <see langword="null"/>.
-        /// </summary>
-        Task<(long roomID, long playlistItemID)?> GetMultiplayerRoomIdForScoreAsync(long scoreId);
+    /// <summary>
+    /// If <paramref name="scoreId"/> is associated with a multiplayer score, returns the room ID and playlist item ID which the score was set on.
+    /// Otherwise, returns <see langword="null"/>.
+    /// </summary>
+    Task<(long roomID, long playlistItemID)?> GetMultiplayerRoomIdForScoreAsync(long scoreId);
 
-        /// <summary>
-        /// Returns whether there has been any score token issued that is associated with the given <paramref name="playlistItemId"/>
-        /// in the room with the given <paramref name="roomId"/>.
-        /// </summary>
-        Task<bool> AnyScoreTokenExistsFor(long playlistItemId, long roomId);
+    /// <summary>
+    /// Returns whether there has been any score token issued that is associated with the given <paramref name="playlistItemId"/>
+    /// in the room with the given <paramref name="roomId"/>.
+    /// </summary>
+    Task<bool> AnyScoreTokenExistsFor(long playlistItemId, long roomId);
 
-        /// <summary>
-        /// Retrieve all scores for a specified playlist item.
-        /// </summary>
-        /// <param name="roomId">The room.</param>
-        /// <param name="playlistItemId">The playlist item.</param>
-        Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId);
+    /// <summary>
+    /// Retrieve all scores for a specified playlist item.
+    /// </summary>
+    /// <remarks>
+    /// Compatibility overload for legacy callers that do not have the room ID available.
+    /// </remarks>
+    /// <param name="playlistItemId">The playlist item.</param>
+    Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long playlistItemId);
 
-        /// <summary>
-        /// Retrieve all passing scores for a specified playlist item.
-        /// </summary>
-        /// <param name="roomId">The room.</param>
-        /// <param name="playlistItemId">The playlist item.</param>
-        /// <param name="afterScoreId">An optional score ID to only fetch newer scores.</param>
-        Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long roomId, long playlistItemId, ulong afterScoreId = 0);
+    /// <summary>
+    /// Retrieve all scores for a specified playlist item.
+    /// </summary>
+    /// <param name="roomId">The room.</param>
+    /// <param name="playlistItemId">The playlist item.</param>
+    Task<IEnumerable<SoloScore>> GetAllScoresForPlaylistItem(long roomId, long playlistItemId);
 
-        /// <summary>
-        /// Returns the best score of user with <paramref name="userId"/> on the playlist item with <paramref name="playlistItemId"/>
-        /// in the room with the given <paramref name="roomId"/>.
-        /// </summary>
-        Task<playlist_best_score?> GetUserBestScoreAsync(long roomId, long playlistItemId, int userId);
+    /// <summary>
+    /// Retrieve all passing scores for a specified playlist item.
+    /// </summary>
+    /// <param name="roomId">The room.</param>
+    /// <param name="playlistItemId">The playlist item.</param>
+    /// <param name="afterScoreId">An optional score ID to only fetch newer scores.</param>
+    Task<IEnumerable<SoloScore>> GetPassingScoresForPlaylistItem(long roomId, long playlistItemId, ulong afterScoreId = 0);
 
-        /// <summary>
-        /// Gets the rank of <paramref name="scoreId"/> in the playlist item with <paramref name="playlistItemId"/>
-        /// in the room with <paramref name="roomId"/>.
-        /// </summary>
-        Task<int> GetUserRankInRoomAsync(long roomId, long playlistItemId, ulong scoreId);
+    /// <summary>
+    /// Returns the best score of user with <paramref name="userId"/> on the playlist item with <paramref name="playlistItemId"/>
+    /// in the room with the given <paramref name="roomId"/>.
+    /// </summary>
+    Task<playlist_best_score?> GetUserBestScoreAsync(long roomId, long playlistItemId, int userId);
 
-        /// <summary>
-        /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>,
-        /// fetching from the API if it is not present in the database.
-        /// </summary>
-        Task<database_beatmap?> GetBeatmapOrFetchAsync(int beatmapId);
+    /// <summary>
+    /// Gets the rank of <paramref name="scoreId"/> in the playlist item with <paramref name="playlistItemId"/>
+    /// in the room with <paramref name="roomId"/>.
+    /// </summary>
+    Task<int> GetUserRankInRoomAsync(long roomId, long playlistItemId, ulong scoreId);
 
-        /// <summary>
-        /// Retrieves the fail time for the beatmap with the given <paramref name="beatmapId"/>.
-        /// </summary>
-        Task<fail_time?> GetBeatmapFailTimeAsync(int beatmapId);
+    /// <summary>
+    /// Retrieves a beatmap corresponding to the given <paramref name="beatmapId"/>,
+    /// fetching from the API if it is not present in the database.
+    /// </summary>
+    Task<database_beatmap?> GetBeatmapOrFetchAsync(int beatmapId);
 
-        /// <summary>
-        /// Updates the fail time record for the given <paramref name="failTime"/>.
-        /// </summary>
-        Task UpdateFailTimeAsync(fail_time failTime);
+    /// <summary>
+    /// Retrieves the fail time for the beatmap with the given <paramref name="beatmapId"/>.
+    /// </summary>
+    Task<fail_time?> GetBeatmapFailTimeAsync(int beatmapId);
 
-        /// <summary>
-        /// Returns the total play time in seconds for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
-        /// </summary>
-        Task<int?> GetUserPlaytimeAsync(string gamemode, int userId);
+    /// <summary>
+    /// Updates the fail time record for the given <paramref name="failTime"/>.
+    /// </summary>
+    Task UpdateFailTimeAsync(fail_time failTime);
 
-        /// <summary>
-        /// Updates the total play time for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
-        /// </summary>
-        Task UpdateUserPlaytimeAsync(string gamemode, int userId, int playTime);
+    /// <summary>
+    /// Returns the total play time in seconds for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
+    /// </summary>
+    Task<int?> GetUserPlaytimeAsync(string gamemode, int userId);
 
-        /// <summary>
-        /// Returns all beatmap sets that have changed since the given <paramref name="after"/> timestamp.
-        /// </summary>
-        Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after);
+    /// <summary>
+    /// Updates the total play time for the given <paramref name="userId"/> in the specified <paramref name="gamemode"/>.
+    /// </summary>
+    Task UpdateUserPlaytimeAsync(string gamemode, int userId, int playTime);
 
-        /// <summary>
-        /// Updates the online status of the user with the given <paramref name="userId"/>.
-        /// </summary>
-        Task UpdateUserOnlineStatusAsync(int userId, bool isOnline);
+    /// <summary>
+    /// Returns all beatmap sets that have changed since the given <paramref name="after"/> timestamp.
+    /// </summary>
+    Task<IEnumerable<beatmap_sync>> GetChangedBeatmapSetsAsync(DateTimeOffset after);
 
-        /// <summary>
-        /// Logs an event that happened in a multiplayer room.
-        /// </summary>
-        Task LogRoomEventAsync(multiplayer_realtime_room_event ev);
+    /// <summary>
+    /// Updates the online status of the user with the given <paramref name="userId"/>.
+    /// </summary>
+    Task UpdateUserOnlineStatusAsync(int userId, bool isOnline);
 
-        /// <summary>
-        /// Logs an event that happened in a matchmaking room.
-        /// </summary>
-        Task LogRoomEventAsync(matchmaking_room_event ev);
+    /// <summary>
+    /// Logs an event that happened in a multiplayer room.
+    /// </summary>
+    Task LogRoomEventAsync(multiplayer_realtime_room_event ev);
 
-        /// <summary>
-        /// Toggles the user's "hide user presence" website setting.
-        /// </summary>
-        /// <param name="userId">The user's ID.</param>
-        /// <param name="visible">Whether the user should appear online to other players on the website.</param>
-        Task ToggleUserPresenceAsync(int userId, bool visible);
+    /// <summary>
+    /// Logs an event that happened in a matchmaking room.
+    /// </summary>
+    Task LogRoomEventAsync(matchmaking_room_event ev);
 
-        Task<float> GetUserPPAsync(int userId, int rulesetId, int variant);
+    /// <summary>
+    /// Toggles the user's "hide user presence" website setting.
+    /// </summary>
+    /// <param name="userId">The user's ID.</param>
+    /// <param name="visible">Whether the user should appear online to other players on the website.</param>
+    Task ToggleUserPresenceAsync(int userId, bool visible);
 
-        Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync();
+    Task<float> GetUserPPAsync(int userId, int rulesetId, int variant);
 
-        Task<matchmaking_pool?> GetMatchmakingPoolAsync(uint poolId);
+    Task<matchmaking_pool[]> GetActiveMatchmakingPoolsAsync();
 
-        Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(uint poolId);
+    Task<matchmaking_pool?> GetMatchmakingPoolAsync(uint poolId);
 
-        Task<database_beatmap[]> GetMatchmakingGlobalPoolBeatmapsAsync(int rulesetId, int variant);
+    Task<matchmaking_pool_beatmap[]> GetMatchmakingPoolBeatmapsAsync(uint poolId);
 
-        Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId);
+    Task<matchmaking_pool_beatmap?> GetMatchmakingPoolBeatmapAsync(uint poolId, int beatmapId, string mods);
 
-        Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
+    Task UpdateMatchmakingPoolBeatmapRatingAsync(matchmaking_pool_beatmap beatmap);
 
-        Task InsertUserEloHistoryEntry(ulong roomId, uint poolId, uint userId, uint opponentId, matchmaking_room_result result, int eloBefore, int eloAfter);
+    Task<database_beatmap[]> GetMatchmakingGlobalPoolBeatmapsAsync(int rulesetId, int variant);
 
-        Task<int[]> GetMatchmakingPoolRatingsAsync(uint poolId);
-    }
+    Task<matchmaking_user_stats?> GetMatchmakingUserStatsAsync(int userId, uint poolId);
+
+    Task UpdateMatchmakingUserStatsAsync(matchmaking_user_stats stats);
+
+    Task InsertUserEloHistoryEntry(ulong roomId, uint poolId, uint userId, uint opponentId, matchmaking_room_result result, int eloBefore, int eloAfter);
+
+    Task<int[]> GetMatchmakingPoolRatingsAsync(uint poolId);
+
+    Task<int[]> GetMatchmakingPoolTop100RatingsAsync(uint poolId);
+  }
 }

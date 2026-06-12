@@ -29,6 +29,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
   public partial class MultiplayerHub : StatefulUserHub<IMultiplayerClient, MultiplayerClientState>, IMultiplayerServer
   {
     public const string STATSD_PREFIX = "multiplayer";
+    private const string ruleset_hash_header = "X-Osu-Ruleset-Hashes";
 
     protected readonly IMultiplayerRoomController RoomController;
     private readonly IDatabaseFactory databaseFactory;
@@ -70,7 +71,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
       {
         try
         {
-          if (Context.GetHttpContext()?.Request.Headers.TryGetValue(HubClientConnector.RULESET_HASH_HEADER, out StringValues headerValue) == true)
+          if (Context.GetHttpContext()?.Request.Headers.TryGetValue(ruleset_hash_header, out StringValues headerValue) == true)
           {
             Dictionary<string, string>? parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(headerValue.ToString());
 
@@ -574,6 +575,31 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         throw new NotJoinedRoomException();
 
       return await GetRoom(state.CurrentRoomID.Value);
+    }
+
+    private async Task checkUserToUserPermissionsAsync(int targetUser)
+    {
+      using (var db = databaseFactory.GetInstance())
+      {
+        if (await db.IsUserRestrictedAsync(targetUser))
+          throw new InvalidStateException("Can't perform that action on a restricted user.");
+
+        var relation = await db.GetUserRelation(Context.GetUserId(), targetUser);
+
+        // The local user has the player they are trying to invite blocked.
+        if (relation?.foe == true)
+          throw new UserBlockedException();
+
+        var inverseRelation = await db.GetUserRelation(targetUser, Context.GetUserId());
+
+        // The player being invited has the local user blocked.
+        if (inverseRelation?.foe == true)
+          throw new UserBlockedException();
+
+        // The player being invited disallows unsolicited PMs and the local user is not their friend.
+        if (inverseRelation?.friend != true && !await db.GetUserAllowsPMs(targetUser))
+          throw new UserBlocksPMsException();
+      }
     }
 
     /// <summary>

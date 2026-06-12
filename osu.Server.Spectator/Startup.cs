@@ -117,8 +117,6 @@ namespace osu.Server.Spectator
       services.Configure<HostOptions>(opts => opts.ShutdownTimeout = GracefulShutdownManager.TIME_BEFORE_FORCEFUL_SHUTDOWN.Add(TimeSpan.FromMinutes(1)));
 
       ConfigureAuthentication(services);
-
-      services.AddAuthorization();
     }
 
     protected virtual void ConfigureAuthentication(IServiceCollection services)
@@ -150,10 +148,10 @@ namespace osu.Server.Spectator
 
       app.UseEndpoints(endpoints =>
       {
-        endpoints.MapHub<SpectatorHub>("/spectator");
-        endpoints.MapHub<MultiplayerHub>("/multiplayer");
-        endpoints.MapHub<MetadataHub>("/metadata");
-        endpoints.MapHub<RefereeHub>("/referee");
+        endpoints.MapHub<SpectatorHub>("/spectator", o => o.AllowStatefulReconnects = true);
+        endpoints.MapHub<MultiplayerHub>("/multiplayer", o => o.AllowStatefulReconnects = true);
+        endpoints.MapHub<MetadataHub>("/metadata", o => o.AllowStatefulReconnects = true);
+        endpoints.MapHub<RefereeHub>("/referee", o => o.AllowStatefulReconnects = true);
       });
 
       // Create shutdown manager singleton.

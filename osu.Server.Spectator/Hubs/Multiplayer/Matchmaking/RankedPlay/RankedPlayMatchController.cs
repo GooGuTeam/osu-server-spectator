@@ -6,14 +6,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
-using osu.Game.Online.API;
+using OpenSkillSharp.Models;
+using OpenSkillSharp.Rating;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.RankedPlay;
 using osu.Game.Online.Rooms;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages;
 
@@ -23,12 +24,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
     public class RankedPlayMatchController : IMatchController, IMatchmakingMatchController
     {
         public const int PLAYER_HAND_SIZE = 5;
-        public const int DECK_SIZE = PLAYER_HAND_SIZE * 2 + 1;
+        public const int DECK_SIZE = 50;
 
         public MultiplayerPlaylistItem CurrentItem => Room.Playlist.Single(item => item.ID == Room.Settings.PlaylistItemId);
 
-        public uint PoolId { get; private set; }
         public IMatchmakingQueueBackgroundService MatchmakingService { get; private set; } = null!;
+        public matchmaking_pool Pool { get; private set; } = null!;
+        public bool Ranked { get; private set; }
 
         public readonly ServerMultiplayerRoom Room;
         public readonly IDatabaseFactory DbFactory;
@@ -55,6 +57,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
         /// </summary>
         public int[] UserIdsByTurnOrder { get; private set; } = [];
 
+        public Dictionary<int, EloRating> RatingByUser { get; private set; } = [];
+
         /// <summary>
         /// Mapping of cards to their associated effect.
         /// </summary>
@@ -64,6 +68,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
         /// Cards that may be drawn from the deck.
         /// </summary>
         private readonly List<RankedPlayCardItem> deck = [];
+
+        /// <summary>
+        /// Indicates whether the final user ratings have been updated.
+        /// Todo: This is public for testing purposes, but should not be.
+        /// </summary>
+        public bool UserRatingsUpdated { get; set; }
 
         public RankedPlayMatchController(ServerMultiplayerRoom room, IDatabaseFactory dbFactory, MultiplayerEventDispatcher eventDispatcher)
         {
@@ -83,34 +93,25 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
             await GotoStage(RankedPlayStage.WaitForJoin);
         }
 
-        async Task IMatchmakingMatchController.Initialise(uint poolId, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector, IMatchmakingQueueBackgroundService matchmakingService)
+        async Task IMatchmakingMatchController.Initialise(matchmaking_pool pool, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector,
+                                                          IMatchmakingQueueBackgroundService matchmakingService)
         {
             MatchmakingService = matchmakingService;
-            PoolId = poolId;
+            Pool = pool;
+            Ranked = pool.ranked;
 
             // Build the deck.
-            matchmaking_pool_beatmap[] beatmaps = beatmapSelector.GetAppropriateBeatmaps(users.Select(u => u.Rating).ToArray());
-
-            if (beatmaps.Length < DECK_SIZE)
-                throw new InvalidOperationException($"There should be at least {DECK_SIZE} beatmaps, but only {beatmaps.Length} were selected.");
-
+            matchmaking_pool_beatmap[] beatmaps = beatmapSelector.GetAppropriateBeatmaps(DECK_SIZE, users.Select(u => u.Rating).ToArray());
             Random.Shared.Shuffle(beatmaps);
 
             foreach (var beatmap in beatmaps)
             {
                 var card = new RankedPlayCardItem();
-                cardToEffectMap[card] = new MultiplayerPlaylistItem
-                {
-                    BeatmapID = beatmap.beatmap_id,
-                    BeatmapChecksum = beatmap.checksum!,
-                    RulesetID = beatmapSelector.Pool?.ruleset_id ?? 0,
-                    StarRating = beatmap.difficulty_rating,
-                    RequiredMods = JsonConvert.DeserializeObject<APIMod[]>(beatmap.mods ?? string.Empty) ?? [],
-                };
+                cardToEffectMap[card] = beatmap.ToPlaylistItem();
                 deck.Add(card);
             }
 
-            State.StarRating = beatmaps.Select(b => b.difficulty_rating).DefaultIfEmpty(0).Average();
+            State.StarRating = beatmaps.Select(b => b.difficultyrating).DefaultIfEmpty(0).Average();
 
             // Create an initial playlist item for the room. Clients require this to operate correctly.
             using (var db = DbFactory.GetInstance())
@@ -125,9 +126,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
             // Create the user states.
             foreach (var user in users)
             {
+                RatingByUser[user.UserId] = user.Rating;
                 State.Users[user.UserId] = new RankedPlayUserInfo
                 {
-                    Rating = (int)Math.Round(user.Rating.Mu)
+                    Rating = (int)Math.Round(user.Rating.Mu),
+                    RatingAfter = (int)Math.Round(user.Rating.Mu)
                 };
             }
 
@@ -325,6 +328,123 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay
             await Room.HandleSettingsChanged(true);
 
             LastActivatedCard = card;
+        }
+
+        /// <summary>
+        /// Causes a player to take damage.
+        /// </summary>
+        /// <param name="userId">The user ID of the player taking damage.</param>
+        /// <param name="directDamage">Direct amount of damage before any multipliers are added.</param>
+        /// <param name="multiplier">A multiplier of <paramref name="directDamage"/>.</param>
+        /// <param name="bonusDamage">Damage dealt for winning a round. Does not scale with <paramref name="multiplier"/>.</param>
+        /// <returns>A descriptor for the damage taken.</returns>
+        public RankedPlayDamageInfo Damage(int userId, int directDamage = 0, double multiplier = 1, int bonusDamage = 0)
+        {
+            RankedPlayUserInfo userInfo = State.Users[userId];
+
+            int totalDamage = (int)Math.Ceiling(directDamage * multiplier) + bonusDamage;
+
+            RankedPlayDamageInfo damageInfo = new RankedPlayDamageInfo
+            {
+                RawDamage = directDamage + bonusDamage,
+                Damage = totalDamage,
+                OldLife = userInfo.Life,
+                NewLife = Math.Max(userInfo.Life == 1_000_000 ? 1 : 0, userInfo.Life - totalDamage),
+                DirectDamage = directDamage,
+                Multiplier = multiplier,
+                BonusDamage = bonusDamage,
+            };
+
+            userInfo.Life = damageInfo.NewLife;
+
+            return damageInfo;
+        }
+
+        public async Task HandleMatchCompleted()
+        {
+            if (UserRatingsUpdated)
+                return;
+
+            UserRatingsUpdated = true;
+
+            // Forego any rating calculations if the match hasn't started yet.
+            // Naturally, this also means we don't have a winner to crown.
+            if (State.CurrentRound == 0)
+            {
+                await MatchmakingService.RecordMatch((int)Pool.id, State);
+                return;
+            }
+
+            int maxLife = State.Users.Max(u => u.Value.Life);
+            int[] winningUsers = State.Users.Where(u => u.Value.Life == maxLife).Select(u => u.Key).ToArray();
+            if (winningUsers.Length == 1)
+                State.WinningUserId = winningUsers.Single();
+
+            if (Ranked)
+            {
+                using (var db = DbFactory.GetInstance())
+                {
+                    PlackettLuce model = new PlackettLuce
+                    {
+                        Mu = 1500,
+                        Sigma = 150,
+                        Beta = 0,
+                        Tau = 15.0,
+                        Gamma = (_, _, _, _, _, _, _) => 1.0
+                    };
+
+                    List<matchmaking_user_stats> stats = [];
+                    List<ITeam> teams = [];
+                    List<double> scores = [];
+
+                    foreach ((int userId, RankedPlayUserInfo user) in State.Users)
+                    {
+                        matchmaking_user_stats userStats = await db.GetMatchmakingUserStatsAsync(userId, Pool.id) ?? new matchmaking_user_stats
+                        {
+                            user_id = (uint)userId,
+                            pool_id = Pool.id
+                        };
+
+                        stats.Add(userStats);
+                        teams.Add(new Team { Players = [model.Rating(userStats.EloData.Rating.Mu, userStats.EloData.Rating.Sig)] });
+                        scores.Add(user.Life);
+                    }
+
+                    IRating[] newRatings = model.Rate(teams, scores: scores).Select(t => t.Players.Single()).ToArray();
+
+                    for (int i = 0; i < stats.Count; i++)
+                    {
+                        matchmaking_room_result result;
+
+                        if (State.WinningUserId == null)
+                            result = matchmaking_room_result.draw;
+                        else if (State.WinningUserId == stats[i].user_id)
+                        {
+                            stats[i].first_placements++;
+                            result = matchmaking_room_result.win;
+                        }
+                        else
+                            result = matchmaking_room_result.loss;
+
+                        await db.InsertUserEloHistoryEntry(
+                            (ulong)Room.RoomID,
+                            Pool.id,
+                            stats[i].user_id,
+                            stats.First(u => u.user_id != stats[i].user_id).user_id,
+                            result,
+                            (int)Math.Round(stats[i].EloData.Rating.Mu),
+                            (int)Math.Round(newRatings[i].Mu));
+
+                        stats[i].EloData.ContestCount++;
+                        stats[i].EloData.Rating = new EloRating(newRatings[i].Mu, newRatings[i].Sigma);
+                        await db.UpdateMatchmakingUserStatsAsync(stats[i]);
+
+                        State.Users[(int)stats[i].user_id].RatingAfter = (int)Math.Round(newRatings[i].Mu);
+                    }
+                }
+            }
+
+            await MatchmakingService.RecordMatch((int)Pool.id, State);
         }
 
         public MatchStartedEventDetail GetMatchDetails() => new MatchStartedEventDetail

@@ -11,12 +11,19 @@ namespace osu.Server.Spectator.Database.Models
     [Serializable]
     public class matchmaking_pool
     {
+        private bool? rankedValue;
+
         public uint id { get; set; }
         public int ruleset_id { get; set; }
         public int variant_id { get; set; }
         public string name { get; set; } = string.Empty;
         public bool active { get; set; }
         public matchmaking_pool_type type { get; set; }
+        public bool ranked
+        {
+            get => rankedValue ?? type == matchmaking_pool_type.ranked_play;
+            set => rankedValue = value;
+        }
 
         /// <summary>
         /// The number of players required for a match to be found.
@@ -36,7 +43,7 @@ namespace osu.Server.Spectator.Database.Models
         /// <summary>
         /// The amount of time (in seconds) before each doubling of the <see cref="rating_search_radius">rating search radius</see>.
         /// </summary>
-        public int rating_search_radius_exp { get; set; }
+        public int rating_search_radius_exp { get; set; } = 300;
 
         public MatchmakingPool ToMatchmakingPool() => new MatchmakingPool
         {
@@ -44,6 +51,7 @@ namespace osu.Server.Spectator.Database.Models
             RulesetId = ruleset_id,
             Variant = variant_id,
             Name = name,
+            Type = type.ToPoolType(),
         };
 
         public string DisplayName

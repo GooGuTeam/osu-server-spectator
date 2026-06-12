@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MessagePack;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using osu.Game.Online;
 using osu.Game.Online.API;
@@ -18,6 +19,7 @@ using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Extensions;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
@@ -124,19 +126,29 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <summary>
         /// Initialises a matchmaking room.
         /// </summary>
+        public static Task<ServerMultiplayerRoom> InitialiseMatchmakingRoomAsync(long roomId, IMultiplayerRoomController roomController, IDatabaseFactory dbFactory,
+                                              MultiplayerEventDispatcher eventDispatcher, ILoggerFactory loggerFactory,
+                                              matchmaking_pool pool, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector,
+                                              IMatchmakingQueueBackgroundService matchmakingService)
+            => InitialiseMatchmakingRoomAsync(roomId, roomController, dbFactory, eventDispatcher, loggerFactory, pool, users, beatmapSelector,
+                              createCompatibilityRulesetManager(loggerFactory), matchmakingService);
+
+        /// <summary>
+        /// Initialises a matchmaking room.
+        /// </summary>
         /// <param name="roomId">The room identifier.</param>
         /// <param name="roomController">The room controller.</param>
         /// <param name="dbFactory">The database factory.</param>
         /// <param name="eventDispatcher">Dispatcher responsible to relaying room events to applicable listeners.</param>
         /// <param name="loggerFactory">The logger factory.</param>
-        /// <param name="poolId">The pool ID.</param>
+        /// <param name="pool">The pool.</param>
         /// <param name="users">The users who are allowed to join the room.</param>
         /// <param name="beatmapSelector">The beatmap selector.</param>
         /// <param name="matchmakingService">The matchmaking service.</param>
         /// <exception cref="InvalidOperationException">If the room is not a matchmaking room in the database.</exception>
         public static async Task<ServerMultiplayerRoom> InitialiseMatchmakingRoomAsync(long roomId, IMultiplayerRoomController roomController, IDatabaseFactory dbFactory,
                                                                                        MultiplayerEventDispatcher eventDispatcher, ILoggerFactory loggerFactory,
-                                                                                       uint poolId, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector,
+                                                                                       matchmaking_pool pool, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector,
                                                                                        RulesetManager rulesetManager, IMatchmakingQueueBackgroundService matchmakingService)
         {
             ServerMultiplayerRoom room = await InitialiseAsync(roomId, roomController, dbFactory, eventDispatcher, loggerFactory, rulesetManager);
@@ -144,9 +156,35 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (room.MatchController is not IMatchmakingMatchController matchmakingController)
                 throw new InvalidOperationException("Failed to initialise the matchmaking room (invalid controller).");
 
-            await matchmakingController.Initialise(poolId, users, beatmapSelector, matchmakingService);
+            await matchmakingController.Initialise(pool, users, beatmapSelector, matchmakingService);
 
             return room;
+        }
+
+        private static RulesetManager createCompatibilityRulesetManager(ILoggerFactory loggerFactory)
+            => new RulesetManager(loggerFactory.CreateLogger<RulesetManager>(), new MemoryCache(new MemoryCacheOptions()), compatibility_shared_interop);
+
+        private static readonly ISharedInterop compatibility_shared_interop = new CompatibilitySharedInterop();
+
+        private sealed class CompatibilitySharedInterop : ISharedInterop
+        {
+            public Task<long> CreateRoomAsync(int hostUserId, MultiplayerRoom room, bool tournamentMode = false)
+                => throw new NotSupportedException();
+
+            public Task AddUserToRoomAsync(int userId, long roomId, string password)
+                => throw new NotSupportedException();
+
+            public Task RemoveUserFromRoomAsync(int userId, long roomId)
+                => throw new NotSupportedException();
+
+            public Task EnsureBeatmapPresentAsync(int beatmapId)
+                => throw new NotSupportedException();
+
+            public Task UploadReplayAsync(int scoreInfoUserID, long scoreInfoOnlineID, int scoreInfoBeatmapId, System.IO.MemoryStream outStream)
+                => throw new NotSupportedException();
+
+            public Task<Dictionary<string, RulesetVersionEntry>> GetRulesetHashesAsync()
+                => Task.FromResult(new Dictionary<string, RulesetVersionEntry>());
         }
 
         #region Serialisation

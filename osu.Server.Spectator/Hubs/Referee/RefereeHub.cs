@@ -107,7 +107,8 @@ namespace osu.Server.Spectator.Hubs.Referee
                 Playlist =
                 [
                     new PlaylistItem(new APIBeatmap { OnlineID = request.BeatmapId }).With(ruleset: request.RulesetId)
-                ]
+                ],
+                MaxParticipants = request.MaxParticipants == 0 ? null : request.MaxParticipants,
             });
 
             long roomId = await sharedInterop.CreateRoomAsync(Context.GetUserId(), room, tournamentMode: true);
@@ -218,6 +219,16 @@ namespace osu.Server.Spectator.Hubs.Referee
 
                     if (roomUsage.Item.BannedUsers.Contains(userId))
                         ThrowHelper.ThrowUserBanned();
+
+                    // check whether the target user is online.
+                    // this relies on the fact that `MultiplayerHub` eagerly creates empty user states on connect,
+                    // which should be fine to do since https://github.com/ppy/osu-server-spectator/pull/338/changes/3080a14b174f8417cf95b939efd349da762da533.
+                    // note that this is querying a memory store, which means that it can break down if multiple concurrent instances of spectator server are active.
+                    // right now this is only the case during instance handover post-deploys, and https://github.com/ppy/osu/pull/37506 hopefully makes that not painful.
+                    // lock is purposefully not taken as taking it has little practical benefit and only increases contention / deadlock fears.
+                    var targetUser = playerStates.GetEntityUnsafe(userId);
+                    if (targetUser == null)
+                        ThrowHelper.ThrowUserNotConnected();
 
                     await roomUsage.Item.InvitePlayer(userId, invitedBy: userUsage.Item.UserId);
                 }
@@ -426,6 +437,11 @@ namespace osu.Server.Spectator.Hubs.Referee
                         ThrowHelper.ThrowRoomStateInvalidForOperation();
 
                     var oldSettings = roomUsage.Item.Settings;
+
+                    var maxParticipants = oldSettings.MaxParticipants;
+                    if (request.MaxParticipants.HasValue)
+                        maxParticipants = request.MaxParticipants.Value == 0 ? null : request.MaxParticipants.Value;
+
                     var newSettings = new MultiplayerRoomSettings
                     {
                         Name = await chatFilters.FilterAsync(request.Name ?? oldSettings.Name),
@@ -435,6 +451,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                         QueueMode = oldSettings.QueueMode,
                         AutoStartDuration = oldSettings.AutoStartDuration,
                         AutoSkip = oldSettings.AutoSkip,
+                        MaxParticipants = maxParticipants,
                     };
 
                     await roomUsage.Item.ChangeRoomSettings(newSettings);
@@ -670,11 +687,23 @@ namespace osu.Server.Spectator.Hubs.Referee
                     if (targetUser == null)
                         ThrowHelper.ThrowUserNotInRoom();
 
-                    var matchController = roomUsage.Item.MatchController as TeamVersusMatchController;
-                    if (matchController == null)
-                        ThrowHelper.ThrowIncorrectMatchType();
+                    if (request.Slot != null)
+                    {
+                        var standardMatchController = roomUsage.Item.MatchController as StandardMatchController;
+                        if (standardMatchController == null)
+                            ThrowHelper.ThrowIncorrectMatchType();
 
-                    await matchController.ChangeUserTeam(targetUser, (int)request.Team);
+                        await standardMatchController.ChangeUserSlot(targetUser, request.Slot.Value);
+                    }
+
+                    if (request.Team != null)
+                    {
+                        var teamVersusMatchController = roomUsage.Item.MatchController as TeamVersusMatchController;
+                        if (teamVersusMatchController == null)
+                            ThrowHelper.ThrowIncorrectMatchType();
+
+                        await teamVersusMatchController.ChangeUserTeam(targetUser, (int)request.Team);
+                    }
                 }
             }
         }

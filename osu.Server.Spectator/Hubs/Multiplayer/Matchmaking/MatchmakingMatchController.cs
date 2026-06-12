@@ -126,13 +126,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             await startCountdown(TimeSpan.FromSeconds(stage_waiting_for_clients_join_time), stageRoundWarmupTime);
         }
 
-        public async Task Initialise(uint poolId, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector, IMatchmakingQueueBackgroundService matchmakingService)
+        public async Task Initialise(matchmaking_pool pool, MatchmakingQueueUser[] users, MatchmakingBeatmapSelector beatmapSelector, IMatchmakingQueueBackgroundService matchmakingService)
         {
-            this.poolId = poolId;
+            poolId = pool.id;
 
             using (var db = dbFactory.GetInstance())
             {
-                foreach (var beatmap in beatmapSelector.GetAppropriateBeatmaps(users.Select(u => u.Rating).ToArray()))
+                foreach (var beatmap in beatmapSelector.GetAppropriateBeatmaps(AppSettings.MatchmakingPoolSize, users.Select(u => u.Rating).ToArray()))
                 {
                     MultiplayerPlaylistItem item = new MultiplayerPlaylistItem
                     {
