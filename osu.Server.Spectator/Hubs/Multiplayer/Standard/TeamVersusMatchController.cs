@@ -76,10 +76,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Standard
 
         public async Task SetLockState(bool locked)
         {
-            if (state.Locked == locked)
+            if (State.Locked == locked)
                 return;
 
-            state.Locked = locked;
+            State.Locked = locked;
             await eventDispatcher.PostMatchRoomStateChangedAsync(room);
         }
 
