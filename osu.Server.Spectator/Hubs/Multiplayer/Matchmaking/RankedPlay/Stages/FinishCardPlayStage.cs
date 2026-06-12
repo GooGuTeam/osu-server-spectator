@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using osu.Game.Online;
@@ -18,7 +19,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
         }
 
         protected override RankedPlayStage Stage => RankedPlayStage.FinishCardPlay;
-        protected override TimeSpan Duration => TimeSpan.MaxValue;
+        protected override TimeSpan Duration => TimeSpan.FromMinutes(2);
 
         protected override async Task Begin()
         {
@@ -27,7 +28,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
 
         protected override async Task Finish()
         {
-            await Controller.GotoStage(RankedPlayStage.GameplayWarmup);
+            Debug.Assert(State.ActiveUserId != null);
+            Debug.Assert(Controller.LastActivatedCard != null);
+
+            if (Room.Users.All(isPlayerReady))
+                await Controller.GotoStage(RankedPlayStage.GameplayWarmup);
+            else
+            {
+                if (Room.Users.Any(isPlayerReady))
+                {
+                    foreach (var player in Room.Users.Where(u => !isPlayerReady(u)))
+                        Controller.Damage(player.UserID, 100_000, State.DamageMultiplier);
+                }
+
+                await Controller.RemoveCards(State.ActiveUserId.Value, [Controller.LastActivatedCard]);
+
+                if (HasGameplayRoundsRemaining())
+                    await Controller.GotoStage(RankedPlayStage.RoundWarmup);
+                else
+                    await Controller.GotoStage(RankedPlayStage.Ended);
+            }
         }
 
         public override async Task HandleUserStateChanged(MultiplayerRoomUser user)
@@ -37,9 +57,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
 
         private async Task continueWhenAllPlayersReady()
         {
-            // Only require players to have the beatmap, but not necessarily have it loaded yet.
-            if (Room.Users.All(u => u.BeatmapAvailability.State == DownloadState.LocallyAvailable))
+            if (Room.Users.All(isPlayerReady))
                 await Finish();
         }
+
+        /// <summary>
+        /// Only requires players to have the beatmap, but not necessarily have it loaded yet.
+        /// </summary>
+        private bool isPlayerReady(MultiplayerRoomUser user)
+            => user.BeatmapAvailability.State == DownloadState.LocallyAvailable;
     }
 }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Moq;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.RankedPlay;
+using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
@@ -45,7 +46,7 @@ namespace osu.Server.Spectator.Tests.RankedPlay
                     {
                         type = database_match_type.ranked_play,
                         ends_at = DateTimeOffset.Now.AddMinutes(5),
-                        host_id = int.Parse(Hub.Context.UserIdentifier!),
+                        user_id = int.Parse(Hub.Context.UserIdentifier!),
                     });
 
             Database.Setup(db => db.GetMatchmakingUserStatsAsync(It.IsAny<int>(), It.IsAny<uint>()))
@@ -55,8 +56,8 @@ namespace osu.Server.Spectator.Tests.RankedPlay
                         pool_id = poolId
                     }));
 
-            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>()))
-                    .Returns<long, long>((_, _) => Task.FromResult<IEnumerable<SoloScore>>(
+            Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>()))
+                    .Returns<long>(_ => Task.FromResult<IEnumerable<SoloScore>>(
                     [
                         new SoloScore { user_id = USER_ID, total_score = 1_000_000 },
                         new SoloScore { user_id = USER_ID_2, total_score = 1_000_000 },
@@ -67,15 +68,13 @@ namespace osu.Server.Spectator.Tests.RankedPlay
         {
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
-                room.Item = await ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, 0,
+                room.Item = await ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, new matchmaking_pool(),
                     new[] { USER_ID, USER_ID_2 }.Select(u => new MatchmakingQueueUser(u.ToString()) { UserId = u }).ToArray(),
-                    new MatchmakingBeatmapSelector(Enumerable.Range(1, 50).Select(i => new matchmaking_pool_beatmap
+                    new MatchmakingBeatmapSelector(new matchmaking_pool(), Enumerable.Range(1, 50).Select(i => new matchmaking_pool_beatmap
                     {
                         id = (uint)i,
                         beatmap_id = i
-                    }).ToArray()),
-                    RulesetManager,
-                    new Mock<IMatchmakingQueueBackgroundService>().Object);
+                    }).ToArray(), new Mock<IDatabaseFactory>().Object), new Mock<IMatchmakingQueueBackgroundService>().Object);
 
                 Room = room.Item;
             }

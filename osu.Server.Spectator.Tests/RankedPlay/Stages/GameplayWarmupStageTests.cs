@@ -3,9 +3,7 @@
 
 using System.Linq;
 using System.Threading.Tasks;
-using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
-using osu.Game.Online.Rooms;
 using Xunit;
 
 namespace osu.Server.Spectator.Tests.RankedPlay.Stages
@@ -21,34 +19,7 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
         {
             await base.SetupForEnter();
 
-            await MatchController.ActivateCard(UserState.Hand.First());
-        }
-
-        [Fact]
-        public async Task DoesNotContinueToGameplayWithoutReady()
-        {
-            await Hub.ChangeBeatmapAvailability(BeatmapAvailability.LocallyAvailable());
-            SetUserContext(ContextUser2);
-            await Hub.ChangeBeatmapAvailability(BeatmapAvailability.LocallyAvailable());
-            SetUserContext(ContextUser);
-
-            for (int i = 0; i < 5; i++)
-            {
-                await FinishCountdown();
-                Assert.Equal(RankedPlayStage.GameplayWarmup, RoomState.Stage);
-            }
-        }
-
-        [Fact]
-        public async Task DoesNotContinueToGameplayWithoutBeatmapAvailable()
-        {
-            await Hub.ChangeState(MultiplayerUserState.Ready);
-            SetUserContext(ContextUser2);
-            await Hub.ChangeState(MultiplayerUserState.Ready);
-            SetUserContext(ContextUser);
-
-            await FinishCountdown();
-            Assert.Equal(RankedPlayStage.GameplayWarmup, RoomState.Stage);
+            await MatchController.ActivateCard(RoomState.ActiveUser!.Hand.First());
         }
 
         [Fact]
@@ -72,6 +43,62 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
 
             Assert.Equal(RankedPlayStage.Ended, RoomState.Stage);
             Assert.Equal(0, UserState.Life);
+        }
+
+        [Fact]
+        public async Task ContinuesToNextRoundWhenAnyPlayerFailsToBecomeReady()
+        {
+            int firstActiveUser = RoomState.ActiveUserId!.Value;
+
+            await MarkCurrentUserReadyAndAvailable();
+            Assert.Equal(RankedPlayStage.GameplayWarmup, RoomState.Stage);
+
+            await FinishCountdown();
+            Assert.Equal(RankedPlayStage.CardPlay, RoomState.Stage);
+
+            int secondActiveUser = RoomState.ActiveUserId!.Value;
+
+            Assert.NotEqual(firstActiveUser, secondActiveUser);
+
+            Assert.Equal(4, RoomState.Users[firstActiveUser].Hand.Count);
+            Assert.Equal(5, RoomState.Users[secondActiveUser].Hand.Count);
+
+            Assert.Equal(1_000_000, RoomState.Users[USER_ID].Life);
+            Assert.Equal(950_000, RoomState.Users[USER_ID_2].Life);
+        }
+
+        [Fact]
+        public async Task ContinuesToNextRoundWhenAllPlayersFailToBecomeReady()
+        {
+            int firstActiveUser = RoomState.ActiveUserId!.Value;
+
+            await FinishCountdown();
+            Assert.Equal(RankedPlayStage.CardPlay, RoomState.Stage);
+
+            int secondActiveUser = RoomState.ActiveUserId!.Value;
+
+            Assert.NotEqual(firstActiveUser, secondActiveUser);
+
+            Assert.Equal(4, RoomState.Users[firstActiveUser].Hand.Count);
+            Assert.Equal(5, RoomState.Users[secondActiveUser].Hand.Count);
+
+            Assert.Equal(1_000_000, RoomState.Users[USER_ID].Life);
+            Assert.Equal(1_000_000, RoomState.Users[USER_ID_2].Life);
+        }
+
+        [Fact]
+        public async Task ContinuesToEndedWhenPlayerDiesFromFailingToBecomeReady()
+        {
+            RoomState.Users[USER_ID].Life = 1;
+
+            SetUserContext(ContextUser2);
+            await MarkCurrentUserReadyAndAvailable();
+
+            await FinishCountdown();
+            Assert.Equal(RankedPlayStage.Ended, RoomState.Stage);
+
+            Assert.Equal(0, RoomState.Users[USER_ID].Life);
+            Assert.Equal(1_000_000, RoomState.Users[USER_ID_2].Life);
         }
     }
 }

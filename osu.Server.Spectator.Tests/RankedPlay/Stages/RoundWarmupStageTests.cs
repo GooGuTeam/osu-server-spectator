@@ -57,9 +57,13 @@ namespace osu.Server.Spectator.Tests.RankedPlay.Stages
         }
 
         [Fact]
-        public async Task RoundMultiplierAdjustment()
+        public async Task GlobalMultiplierIncreases()
         {
-            double[] expectedMultipliers = [1, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+            RoomState.CurrentRound = 0;
+            MatchController.Pool.ruleset_id = 0;
+            await MatchController.GotoStage(RankedPlayStage.RoundWarmup);
+
+            double[] expectedMultipliers = [0.5, 1, 1.5, 2];
 
             for (int i = 0; i < expectedMultipliers.Length; i++)
             {

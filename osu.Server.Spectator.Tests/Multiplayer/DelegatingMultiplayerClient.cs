@@ -189,6 +189,12 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 await c.MatchmakingRoomInvitedWithParams(invitation);
         }
 
+        public virtual async Task MatchmakingDuelIssued(MatchmakingDuelIssuedParams issue)
+        {
+            foreach (var c in Clients.OfType<IMatchmakingClient>())
+                await c.MatchmakingDuelIssued(issue);
+        }
+
         public virtual async Task MatchmakingRoomReady(long roomId, string password)
         {
             foreach (var c in Clients.OfType<IMatchmakingClient>())
@@ -257,6 +263,12 @@ namespace osu.Server.Spectator.Tests.Multiplayer
         {
             foreach (var c in Clients.OfType<IMultiplayerClient>())
                 await c.DisconnectRequested();
+        }
+
+        public async Task ServerShuttingDown()
+        {
+            foreach (var c in Clients.OfType<IMultiplayerClient>())
+                await c.ServerShuttingDown();
         }
     }
 }

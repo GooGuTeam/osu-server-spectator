@@ -19,13 +19,20 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
         /// </summary>
         public TimeSpan ScoreRetrievalWaitTime { get; set; } = TimeSpan.FromSeconds(10);
 
+        /// <summary>
+        /// Base amount of damage taken per round.
+        /// </summary>
+        public int BaseDamage { get; set; } = 50_000;
+
         public ResultsStage(RankedPlayMatchController controller)
             : base(controller)
         {
         }
 
         protected override RankedPlayStage Stage => RankedPlayStage.Results;
-        protected override TimeSpan Duration => TimeSpan.FromSeconds(20);
+        protected override TimeSpan Duration => TimeSpan.FromSeconds(15);
+
+        private int? winningUserId;
 
         protected override async Task Begin()
         {
@@ -34,7 +41,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
 
             using (var db = DbFactory.GetInstance())
             {
-                // Wait up to ScoreRetrievalWaitTime to retrieve scores for all players, before continuing and giving them 0 score.
+                // Wait up to 10 seconds to retrieve scores for all players, before continuing and giving them 0 score.
                 using (var cts = new CancellationTokenSource(ScoreRetrievalWaitTime))
                 {
                     SoloScore[] retrievedScores = [];
@@ -53,46 +60,56 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
                 }
             }
 
-            // Add dummy scores for all users that did not play the map.
-            foreach ((int userId, _) in State.Users)
+            foreach ((int userId, RankedPlayUserInfo info) in State.Users)
             {
+                // Add dummy scores for all users that did not play the map.
                 if (scores.All(s => s.user_id != userId))
                     scores.Add(new SoloScore { user_id = (uint)userId });
+
+                // Populate the models with a default damage info.
+                info.DamageInfo = Controller.Damage(userId);
             }
 
-            int maxTotalScore = (int)scores.Select(s => s.total_score).Max();
+            int winningTotalScore = (int)scores.Select(s => s.total_score).Max();
+            SoloScore[] winningScores = scores.Where(u => u.total_score == winningTotalScore).ToArray();
+            winningUserId = winningScores.Length == 1 ? (int)winningScores.Single().user_id : null;
 
-            foreach (var score in scores)
+            if (winningUserId != null)
             {
-                var userInfo = State.Users[(int)score.user_id];
+                // Winner: losing player takes damage.
+                SoloScore losingScore = scores.Single(u => u.user_id != winningUserId);
 
-                int rawDamage = maxTotalScore - (int)score.total_score;
-                int damage = (int)Math.Ceiling(rawDamage * State.DamageMultiplier);
+                int attackDamage = winningTotalScore - (int)losingScore.total_score;
+                double attackMultiplier = State.DamageMultiplier + State.Users[winningUserId.Value].DamageMultiplier;
 
-                int oldLife = userInfo.Life;
-                int newLife = Math.Max(0, oldLife - damage);
-
-                userInfo.Life = newLife;
-                userInfo.DamageInfo = new RankedPlayDamageInfo
-                {
-                    RawDamage = rawDamage,
-                    Damage = damage,
-                    OldLife = oldLife,
-                    NewLife = newLife,
-                };
+                State.Users[(int)losingScore.user_id].DamageInfo = Controller.Damage((int)losingScore.user_id, attackDamage, attackMultiplier, BaseDamage);
+                incrementRoundsWonIfPresent(State.Users[(int)winningUserId]);
             }
 
-            SoloScore[] winningScores = scores.Where(u => u.total_score == maxTotalScore).ToArray();
-            if (winningScores.Length == 1)
-                incrementRoundsWonIfPresent(State.Users[(int)winningScores.Single().user_id]);
+            if (Controller.Ranked && scores.All(s => Controller.RatingByUser.ContainsKey((int)s.user_id)))
+            {
+                await Controller.MatchmakingService.RecordBeatmapResult(
+                    Controller.Pool.id,
+                    Room.CurrentPlaylistItem.BeatmapID,
+                    Room.CurrentPlaylistItem.RequiredMods.ToArray(),
+                    scores.Select(s => (int)s.total_score).ToArray(),
+                    scores.Select(s => Controller.RatingByUser[(int)s.user_id]).ToArray());
+            }
+
+            if (!HasGameplayRoundsRemaining())
+                await Controller.HandleMatchCompleted();
         }
 
         protected override async Task Finish()
         {
+            // Award the winning player with their own multiplier boost.
+            if (winningUserId != null)
+                State.Users[winningUserId.Value].DamageMultiplier += 0.5;
+
             foreach ((_, RankedPlayUserInfo userInfo) in State.Users)
                 userInfo.DamageInfo = null;
 
-            if (hasGameplayRoundsRemaining())
+            if (HasGameplayRoundsRemaining())
                 await Controller.GotoStage(RankedPlayStage.RoundWarmup);
             else
                 await Controller.GotoStage(RankedPlayStage.Ended);
@@ -101,17 +118,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay.Stages
         public override async Task HandleUserLeft(MultiplayerRoomUser user)
         {
             // Allow players to leave early without incurring a loss if they know gameplay won't continue.
-            if (hasGameplayRoundsRemaining())
+            if (HasGameplayRoundsRemaining())
                 await KillUser(user);
 
             // Remain in the results stage, which will naturally transition to the ended stage once the countdown expires.
-        }
-
-        private bool hasGameplayRoundsRemaining()
-        {
-            int countPlayersAlive = State.Users.Count(u => u.Value.Life > 0);
-            int countCardsRemaining = Controller.DeckCount + State.Users.Sum(u => u.Value.Hand.Count);
-            return countPlayersAlive > 1 && countCardsRemaining > 0;
         }
 
         private static void incrementRoundsWonIfPresent(RankedPlayUserInfo userInfo)
