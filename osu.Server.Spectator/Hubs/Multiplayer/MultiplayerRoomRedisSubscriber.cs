@@ -69,14 +69,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task processMessage(RedisChannel channel, RedisValue message)
         {
+            if (!tryParseRoomId(channel, out long roomId))
+                return;
+
+            if (message.IsNullOrEmpty)
+                return;
+
             try
             {
-                if (!tryParseRoomId(channel, out long roomId))
-                    return;
-
-                if (message.IsNullOrEmpty)
-                    return;
-
                 var envelope = JsonConvert.DeserializeObject<MultiplayerRoomEventEnvelope>(message!);
                 if (envelope == null || string.IsNullOrWhiteSpace(envelope.Type))
                     return;
@@ -84,51 +84,38 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 switch (envelope.Type)
                 {
                     case "HostChanged":
-                        if (envelope.UserId != null)
-                            await applyHostChanged(roomId, envelope.UserId.Value);
-
-                        break;
-
-                    case "MatchRoomStateChanged":
-                        if (envelope.State != null)
-                            await applyMatchRoomStateChanged(roomId, envelope.State.Locked);
-
+                        if (envelope.TargetUserId != null)
+                            await applyHostChanged(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "SetLockState":
-                        if (envelope.Locked != null)
-                            await applySetLockState(roomId, envelope.Locked.Value);
-
+                        if (envelope.RoomState != null)
+                            await applySetLockState(roomId, envelope.RoomState.Locked);
                         break;
 
                     case "MatchUserStateChanged":
-                        if (envelope.UserId != null && envelope.MatchState != null)
-                            await applyMatchUserStateChanged(roomId, envelope.UserId.Value, envelope.MatchState.TeamID);
-
+                        if (envelope.TargetUserId != null && envelope.UserState != null)
+                            await applyMatchUserStateChanged(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId);
                         break;
 
                     case "KickPlayer":
-                        if (envelope.UserId != null)
-                            await applyUserKicked(roomId, envelope.UserId.Value);
-
+                        if (envelope.TargetUserId != null)
+                            await applyUserKicked(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "BanUser":
-                        if (envelope.BannedUserId != null)
-                            await applyUserBanned(roomId, envelope.BannedUserId.Value);
-
+                        if (envelope.TargetUserId != null)
+                            await applyUserBanned(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "AddReferee":
                         if (envelope.TargetUserId != null)
                             await applyRefereeAdded(roomId, envelope.TargetUserId.Value);
-
                         break;
 
                     case "RemoveReferee":
                         if (envelope.TargetUserId != null)
                             await applyRefereeRemoved(roomId, envelope.TargetUserId.Value);
-
                         break;
 
                     case "StartMatch":
@@ -139,10 +126,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         await applyStartReminderTimer(roomId, envelope);
                         break;
 
-                    case "StopMatchCountdown":
-                        await applyStopMatchCountdown(roomId);
-                        break;
-
                     case "StopAllCountdowns":
                         await applyStopAllCountdowns(roomId);
                         break;
@@ -150,7 +133,44 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     case "AbortMatch":
                         await applyAbortMatch(roomId);
                         break;
+
+                    case "CloseRoom":
+                        if (envelope.TargetUserId != null)
+                            await applyDisbandRoom(roomId, envelope.TargetUserId.Value);
+                        break;
+
+                    case "InviteUser":
+                        throw new NotImplementedException();
+
+                    default:
+                        return;
                 }
+
+                // TODO: Add IDs to TaskResult messages?
+                string callbackMessage = JsonConvert.SerializeObject(new
+                {
+                    type = "TaskResult",
+                    room_id = roomId,
+                    success = true,
+                });
+
+                await redis.GetSubscriber().PublishAsync(
+                    new RedisChannel($"osu-channel:room:{roomId}", RedisChannel.PatternMode.Literal),
+                    callbackMessage);
+            }
+            catch (InvalidStateException ex)
+            {
+                string callbackMessage = JsonConvert.SerializeObject(new
+                {
+                    type = "TaskResult",
+                    room_id = roomId,
+                    success = false,
+                    message = ex.Message,
+                });
+
+                await redis.GetSubscriber().PublishAsync(
+                    new RedisChannel($"osu-channel:room:{roomId}", RedisChannel.PatternMode.Literal),
+                    callbackMessage);
             }
             catch (Exception ex)
             {
@@ -158,129 +178,125 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
-        private async Task applyHostChanged(long roomId, int userId)
+        private async Task<ServerMultiplayerRoom> ensureStandardRoom(long roomId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null)
-                return;
-
-            if (roomUsage.Item.Host?.UserID == userId)
-                return;
-
-            if (roomUsage.Item.Users.All(u => u.UserID != userId))
-                return;
-
-            await roomUsage.Item.SetHost(userId);
+            using ItemUsage<ServerMultiplayerRoom>? roomUsage = await roomController.TryGetRoom(roomId);
+            return ensureStandardRoomUsage(roomUsage).Item ?? throw new InvalidStateException("Cannot find the room specified.");
         }
 
-        private async Task applyMatchRoomStateChanged(long roomId, bool locked)
+        // Warning: This method doesn't guarantee the item is non-null.
+        private static ItemUsage<ServerMultiplayerRoom> ensureStandardRoomUsage(ItemUsage<ServerMultiplayerRoom>? roomUsage)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            if (roomUsage?.Item == null)
+                throw new InvalidStateException("Cannot find the room specified.");
 
-            if (roomUsage?.Item?.MatchController is not TeamVersusMatchController teamVersus)
-                return;
+            if (roomUsage.Item.MatchController is not StandardMatchController)
+                throw new InvalidStateException("This function is only supported for multiplayer rooms.");
 
-            await teamVersus.SetLockState(locked);
+            return roomUsage;
+        }
+
+        private async Task applyHostChanged(long roomId, int userId)
+        {
+            var room = await ensureStandardRoom(roomId);
+
+            if (room.Host?.UserID == userId)
+                throw new InvalidStateException("The specified user is already the host.");
+
+            await room.SetHost(userId);
         }
 
         private async Task applySetLockState(long roomId, bool locked)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            var room = await ensureStandardRoom(roomId);
 
-            if (roomUsage?.Item?.MatchController is not TeamVersusMatchController teamVersus)
-                return;
+            if (room.MatchController is not TeamVersusMatchController teamVersus)
+                throw new InvalidStateException("Locking / Unlocking is only supported in Team VS mode.");
 
             await teamVersus.SetLockState(locked);
         }
 
         private async Task applyMatchUserStateChanged(long roomId, int userId, int teamId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            var room = await ensureStandardRoom(roomId);
 
-            if (roomUsage?.Item?.MatchController is not TeamVersusMatchController teamVersus)
-                return;
+            if (room.MatchController is not TeamVersusMatchController teamVersus)
+                throw new InvalidStateException("Team changing is only supported in Team VS mode.");
 
-            var user = roomUsage.Item.Users.FirstOrDefault(u => u.UserID == userId);
+            var user = room.Users.FirstOrDefault(u => u.UserID == userId);
             if (user == null)
-                return;
+                throw new InvalidStateException("User is not in the room.");
 
             await teamVersus.ChangeUserTeam(user, teamId);
         }
 
         private async Task applyUserKicked(long roomId, int userId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
 
-            var user = roomUsage?.Item?.Users.FirstOrDefault(u => u.UserID == userId);
-            if (roomUsage == null || user == null)
-                return;
+            var user = roomUsage.Item?.Users.FirstOrDefault(u => u.UserID == userId);
+            if (user == null)
+                throw new InvalidStateException("User is not in the room.");
 
-            // Determine if user is a player or referee and get the appropriate state
-            if (user.Role == MultiplayerRoomUserRole.Player)
+            // Not handling the null usage items below
+            // since the user's role is bound to be either a player or a referee for now.
+            switch (user.Role)
             {
-                using (var playerUsage = await players.GetForUse(userId))
+                // Determine if user is a player or referee and get the appropriate state
+                case MultiplayerRoomUserRole.Player:
                 {
+                    using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(userId);
+
                     if (playerUsage.Item != null)
                         await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, userId);
+                    break;
                 }
-            }
-            else if (user.Role == MultiplayerRoomUserRole.Referee)
-            {
-                using (var refereeUsage = await referees.GetForUse(userId))
+
+                case MultiplayerRoomUserRole.Referee:
                 {
+                    using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+
                     if (refereeUsage.Item != null)
                         await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
+                    break;
                 }
             }
         }
 
         private async Task applyUserBanned(long roomId, int bannedUserId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null)
-                return;
-
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
             await roomController.BanUserFromRoom(bannedUserId, roomUsage, bannedUserId);
         }
 
         private async Task applyRefereeAdded(long roomId, int userId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null)
-                return;
+            await ensureStandardRoom(roomId);
 
             // Get or create referee state and associate with room
-            using (var refereeUsage = await referees.GetForUse(userId))
-            {
-                refereeUsage.Item ??= new RefereeClientState(string.Empty, userId);
-                refereeUsage.Item.AssociateWithRoom(roomId);
-            }
+            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+
+            refereeUsage.Item ??= new RefereeClientState(string.Empty, userId);
+            refereeUsage.Item.AssociateWithRoom(roomId);
         }
 
         private async Task applyRefereeRemoved(long roomId, int userId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
 
-            if (roomUsage?.Item == null)
-                return;
-
-            var user = roomUsage.Item.Users.FirstOrDefault(u => u.UserID == userId);
+            var user = roomUsage.Item?.Users.FirstOrDefault(u => u.UserID == userId);
 
             // If referee is in room, kick them
             if (user?.Role == MultiplayerRoomUserRole.Referee)
             {
-                using (var refereeUsage = await referees.GetForUse(userId))
-                {
-                    Debug.Assert(refereeUsage.Item != null);
-                    await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
-                }
+                using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+
+                Debug.Assert(refereeUsage.Item != null);
+                await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
             }
 
             // Disassociate referee from room
-            using (var refereeUsage = await referees.GetForUse(userId))
+            using (ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId))
             {
                 refereeUsage.Item?.DisassociateFromRoom(roomId);
             }
@@ -288,88 +304,96 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyStartMatch(long roomId, MultiplayerRoomEventEnvelope envelope)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null)
-                return;
+            var room = await ensureStandardRoom(roomId);
 
             // Stop any active reminder timer (mutual exclusion: match countdown takes priority)
-            var reminderCountdown = roomUsage.Item.FindCountdownOfType<ReminderCountdown>();
+            var reminderCountdown = room.FindCountdownOfType<ReminderCountdown>();
             if (reminderCountdown != null)
-                await roomUsage.Item.StopCountdown(reminderCountdown.ID);
+                await room.StopCountdown(reminderCountdown.ID);
 
             // If countdownSeconds provided, request spectator to start countdown; otherwise start immediately
-            if (envelope.CountdownSeconds != null)
+            if (envelope.Countdown != null)
             {
-                int seconds = envelope.CountdownSeconds.Value;
-                await roomUsage.Item.StartMatchCountdown(TimeSpan.FromSeconds(seconds));
+                int seconds = envelope.Countdown.Seconds;
+                await room.StartMatchCountdown(TimeSpan.FromSeconds(seconds));
             }
             else
             {
-                await ServerMultiplayerRoom.StartMatch(roomUsage.Item);
+                await ServerMultiplayerRoom.StartMatch(room);
             }
         }
 
         private async Task applyStartReminderTimer(long roomId, MultiplayerRoomEventEnvelope envelope)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null || envelope.CountdownSeconds == null)
-                return;
+            var room = await ensureStandardRoom(roomId);
 
             // Create and start a ReminderCountdown (reminder-only, does not start match)
-            int seconds = envelope.CountdownSeconds.Value;
+            int seconds = envelope.Countdown?.Seconds ?? 30;
             var reminderCountdown = new ReminderCountdown
             {
-                TimeRemaining = TimeSpan.FromSeconds(seconds)
+                TimeRemaining = TimeSpan.FromSeconds(seconds),
             };
 
-            await roomUsage.Item.StartCountdown(reminderCountdown, onComplete: null);
-        }
-
-        private async Task applyStopMatchCountdown(long roomId)
-        {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            var countdown = roomUsage?.Item?.FindCountdownOfType<MatchStartCountdown>();
-            if (roomUsage?.Item != null && countdown != null)
-                await roomUsage.Item.StopCountdown(countdown.ID);
+            await room.StartCountdown(reminderCountdown, onComplete: null);
         }
 
         private async Task applyStopAllCountdowns(long roomId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
-
-            if (roomUsage?.Item == null)
-                return;
+            var room = await ensureStandardRoom(roomId);
+            bool result = false;
 
             // Stop MatchStartCountdown if exists
-            var matchCountdown = roomUsage.Item.FindCountdownOfType<MatchStartCountdown>();
+            var matchCountdown = room.FindCountdownOfType<MatchStartCountdown>();
+
             if (matchCountdown != null)
-                await roomUsage.Item.StopCountdown(matchCountdown.ID);
+            {
+                await room.StopCountdown(matchCountdown.ID);
+                result = true;
+            }
 
             // Stop ReminderCountdown if exists
-            var reminderCountdown = roomUsage.Item.FindCountdownOfType<ReminderCountdown>();
+            var reminderCountdown = room.FindCountdownOfType<ReminderCountdown>();
+
             if (reminderCountdown != null)
-                await roomUsage.Item.StopCountdown(reminderCountdown.ID);
+            {
+                await room.StopCountdown(reminderCountdown.ID);
+                result = true;
+            }
+
+            if (!result)
+            {
+                if (room.FindCountdownOfType<MultiplayerCountdown>() != null)
+                    throw new InvalidStateException("Active countdowns exist, but you are unable to abort them.");
+
+                throw new InvalidStateException("There are no active countdowns.");
+            }
         }
 
         private async Task applyAbortMatch(long roomId)
         {
-            using var roomUsage = await roomController.TryGetRoom(roomId);
+            var room = await ensureStandardRoom(roomId);
 
-            if (roomUsage?.Item == null)
-                return;
-
-            // Only abort if match is in a running state
             try
             {
-                await roomUsage.Item.AbortMatch();
+                // If the match is running, abort it
+                await room.AbortMatch();
             }
-            catch (InvalidOperationException)
+            catch (InvalidStateException)
             {
-                // ignore invalid abort requests
+                // Then try to stop ongoing match timers
+                var countdown = room.FindCountdownOfType<MatchStartCountdown>();
+
+                if (countdown == null)
+                    throw new InvalidStateException("There is not a running match or an ongoing match countdown.");
+
+                await room.StopCountdown(countdown.ID);
             }
+        }
+
+        private async Task applyDisbandRoom(long roomId, int userId)
+        {
+            var room = await ensureStandardRoom(roomId);
+            await room.Disband(userId);
         }
 
         private static bool tryParseRoomId(RedisChannel channel, out long roomId)
@@ -380,7 +404,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (!channelName.StartsWith(room_channel_prefix, StringComparison.Ordinal))
                 return false;
 
-            return long.TryParse(channelName.Substring(room_channel_prefix.Length), out roomId);
+            return long.TryParse(channelName[room_channel_prefix.Length..], out roomId);
         }
 
         private sealed class MultiplayerRoomEventEnvelope
@@ -388,29 +412,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             [JsonProperty("type")]
             public string? Type { get; set; }
 
-            [JsonProperty("userId")]
-            public int? UserId { get; set; }
-
-            [JsonProperty("bannedUserId")]
-            public int? BannedUserId { get; set; }
-
-            [JsonProperty("targetUserId")]
+            [JsonProperty("target")]
             public int? TargetUserId { get; set; }
 
-            [JsonProperty("countdownSeconds")]
-            public int? CountdownSeconds { get; set; }
-
-            [JsonProperty("locked")]
-            public bool? Locked { get; set; }
-
-            [JsonProperty("byUserId")]
+            [JsonProperty("by")]
             public int? ByUserId { get; set; }
 
-            [JsonProperty("state")]
-            public MultiplayerRoomStateEnvelope? State { get; set; }
+            [JsonProperty("countdown")]
+            public MultiplayerCountdownEnvelope? Countdown { get; set; }
 
-            [JsonProperty("matchState")]
-            public MultiplayerUserStateEnvelope? MatchState { get; set; }
+            [JsonProperty("room_state")]
+            public MultiplayerRoomStateEnvelope? RoomState { get; set; }
+
+            [JsonProperty("user_state")]
+            public MultiplayerUserStateEnvelope? UserState { get; set; }
+        }
+
+        private sealed class MultiplayerCountdownEnvelope
+        {
+            [JsonProperty("seconds")]
+            public int Seconds { get; set; }
         }
 
         private sealed class MultiplayerRoomStateEnvelope
@@ -421,8 +442,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private sealed class MultiplayerUserStateEnvelope
         {
-            [JsonProperty("teamID")]
-            public int TeamID { get; set; }
+            [JsonProperty("team_id")]
+            public int TeamId { get; set; }
         }
     }
 }
