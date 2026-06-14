@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,6 +76,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 return;
 
             string? id = null;
+            object details = new
+            {
+            };
 
             try
             {
@@ -88,9 +90,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                 switch (envelope.Type)
                 {
-                    case "HostChanged":
+                    case "TransferHost":
                         if (envelope.TargetUserId != null)
-                            await applyHostChanged(roomId, envelope.TargetUserId.Value);
+                            await applyTransferHost(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "SetLockState":
@@ -98,29 +100,36 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             await applySetLockState(roomId, envelope.RoomState.Locked);
                         break;
 
-                    case "MatchUserStateChanged":
+                    case "ChangeTeam":
                         if (envelope.TargetUserId != null && envelope.UserState != null)
-                            await applyMatchUserStateChanged(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId);
+                            await applyChangeUserTeam(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId);
                         break;
 
                     case "KickPlayer":
                         if (envelope.TargetUserId != null)
-                            await applyUserKicked(roomId, envelope.TargetUserId.Value);
+                            await applyKickUser(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "BanUser":
                         if (envelope.TargetUserId != null)
-                            await applyUserBanned(roomId, envelope.TargetUserId.Value);
+                            await applyBanUser(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "AddReferee":
                         if (envelope.TargetUserId != null)
-                            await applyRefereeAdded(roomId, envelope.TargetUserId.Value);
+                            await applyAddReferee(roomId, envelope.TargetUserId.Value);
                         break;
 
                     case "RemoveReferee":
                         if (envelope.TargetUserId != null)
-                            await applyRefereeRemoved(roomId, envelope.TargetUserId.Value);
+                            await applyRemoveReferee(roomId, envelope.TargetUserId.Value);
+                        break;
+
+                    case "ListReferees":
+                        details = new
+                        {
+                            referee_ids = await getRefereeIds(roomId),
+                        };
                         break;
 
                     case "StartMatch":
@@ -140,8 +149,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         break;
 
                     case "CloseRoom":
-                        if (envelope.TargetUserId != null)
-                            await applyDisbandRoom(roomId, envelope.TargetUserId.Value);
+                        if (envelope.ByUserId != null)
+                            await applyDisbandRoom(roomId, envelope.ByUserId.Value);
                         break;
 
                     case "InviteUser":
@@ -155,6 +164,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 {
                     type = "TaskResult",
                     success = true,
+                    details,
                 });
 
                 await redis.GetSubscriber().PublishAsync(
@@ -162,7 +172,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     callbackMessage);
             }
             // Try our best effort to give the feedback to backend
-            catch (InvalidStateException ex)
+            catch (Exception ex) when (ex is InvalidStateException or NotHostException)
             {
                 // Would this really happen?
                 if (id == null)
@@ -171,11 +181,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     return;
                 }
 
+                string exceptionMessage = ex is NotHostException ? "You don't have the required privilege to perform this action." : ex.Message;
+
                 string callbackMessage = JsonConvert.SerializeObject(new
                 {
                     type = "TaskResult",
                     success = false,
-                    message = ex.Message,
+                    message = exceptionMessage,
                 });
 
                 await redis.GetSubscriber().PublishAsync(
@@ -206,7 +218,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             return roomUsage;
         }
 
-        private async Task applyHostChanged(long roomId, int userId)
+        private async Task<int[]> getRefereeIds(long roomId)
+        {
+            await ensureStandardRoom(roomId);
+
+            return referees.GetAllEntities()
+                           .Select(kv => kv.Value)
+                           .Where(rs => rs.IsAssociatedWithRoom(roomId))
+                           .Select(rs => rs.UserId)
+                           .ToArray();
+        }
+
+        private async Task applyTransferHost(long roomId, int userId)
         {
             var room = await ensureStandardRoom(roomId);
 
@@ -226,7 +249,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await teamVersus.SetLockState(locked);
         }
 
-        private async Task applyMatchUserStateChanged(long roomId, int userId, int teamId)
+        private async Task applyChangeUserTeam(long roomId, int userId, int teamId)
         {
             var room = await ensureStandardRoom(roomId);
 
@@ -240,7 +263,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await teamVersus.ChangeUserTeam(user, teamId);
         }
 
-        private async Task applyUserKicked(long roomId, int userId)
+        private async Task applyKickUser(long roomId, int userId)
         {
             using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
 
@@ -273,13 +296,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
-        private async Task applyUserBanned(long roomId, int bannedUserId)
+        private async Task applyBanUser(long roomId, int bannedUserId)
         {
             using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
             await roomController.BanUserFromRoom(bannedUserId, roomUsage, bannedUserId);
         }
 
-        private async Task applyRefereeAdded(long roomId, int userId)
+        private async Task applyAddReferee(long roomId, int userId)
         {
             await ensureStandardRoom(roomId);
 
@@ -290,26 +313,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             refereeUsage.Item.AssociateWithRoom(roomId);
         }
 
-        private async Task applyRefereeRemoved(long roomId, int userId)
+        private async Task applyRemoveReferee(long roomId, int userId)
         {
             using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
 
-            var user = roomUsage.Item?.Users.FirstOrDefault(u => u.UserID == userId);
-
-            // If referee is in room, kick them
-            if (user?.Role == MultiplayerRoomUserRole.Referee)
-            {
-                using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
-
-                Debug.Assert(refereeUsage.Item != null);
-                await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
-            }
-
             // Disassociate referee from room
-            using (ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId))
-            {
-                refereeUsage.Item?.DisassociateFromRoom(roomId);
-            }
+            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+            refereeUsage.Item?.DisassociateFromRoom(roomId);
         }
 
         private async Task applyStartMatch(long roomId, MultiplayerRoomEventEnvelope envelope)
