@@ -24,6 +24,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
     sealed public class MultiplayerRoomRedisSubscriber : IHostedService, IDisposable
     {
         private const string room_channel_prefix = "osu-channel:room:";
+        private const string callback_channel_prefix = "osu-channel:callback:";
 
         private readonly IConnectionMultiplexer redis;
         private readonly IMultiplayerRoomController roomController;
@@ -75,11 +76,15 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (message.IsNullOrEmpty)
                 return;
 
+            string? id = null;
+
             try
             {
                 var envelope = JsonConvert.DeserializeObject<MultiplayerRoomEventEnvelope>(message!);
                 if (envelope == null || string.IsNullOrWhiteSpace(envelope.Type))
                     return;
+
+                id = envelope.Id;
 
                 switch (envelope.Type)
                 {
@@ -146,30 +151,35 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         return;
                 }
 
-                // TODO: Add IDs to TaskResult messages?
                 string callbackMessage = JsonConvert.SerializeObject(new
                 {
                     type = "TaskResult",
-                    room_id = roomId,
                     success = true,
                 });
 
                 await redis.GetSubscriber().PublishAsync(
-                    new RedisChannel($"osu-channel:room:{roomId}", RedisChannel.PatternMode.Literal),
+                    new RedisChannel($"{callback_channel_prefix}{id}", RedisChannel.PatternMode.Literal),
                     callbackMessage);
             }
+            // Try our best effort to give the feedback to backend
             catch (InvalidStateException ex)
             {
+                // Would this really happen?
+                if (id == null)
+                {
+                    logger.LogWarning(ex, "A task (from {Channel}) without an ID returned with exception.", channel);
+                    return;
+                }
+
                 string callbackMessage = JsonConvert.SerializeObject(new
                 {
                     type = "TaskResult",
-                    room_id = roomId,
                     success = false,
                     message = ex.Message,
                 });
 
                 await redis.GetSubscriber().PublishAsync(
-                    new RedisChannel($"osu-channel:room:{roomId}", RedisChannel.PatternMode.Literal),
+                    new RedisChannel($"{callback_channel_prefix}{id}", RedisChannel.PatternMode.Literal),
                     callbackMessage);
             }
             catch (Exception ex)
@@ -409,6 +419,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private sealed class MultiplayerRoomEventEnvelope
         {
+            [JsonProperty("id")]
+            public string? Id { get; set; }
+
             [JsonProperty("type")]
             public string? Type { get; set; }
 
