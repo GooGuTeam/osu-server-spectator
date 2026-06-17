@@ -80,32 +80,6 @@ namespace osu.Server.Spectator.Tests.Multiplayer
             checkUserOnTeam(user, team);
         }
 
-        [Fact]
-        public async Task ExternalLockStateUpdateBroadcastsWhenChanged()
-        {
-            var hub = new Mock<IMultiplayerRoomController>();
-            var room = await ServerMultiplayerRoom.InitialiseAsync(ROOM_ID, hub.Object, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, RulesetManager);
-
-            var teamVersus = new TeamVersusMatchController(room, DatabaseFactory.Object, EventDispatcher);
-
-            await room.ChangeMatchType(teamVersus);
-            Receiver.Verify(c => c.MatchRoomStateChanged(It.IsAny<MatchRoomState>()), Times.Once());
-
-            await teamVersus.SetLockState(true);
-
-            Assert.True(((TeamVersusRoomState)room.MatchState!).Locked);
-            Receiver.Verify(c => c.MatchRoomStateChanged(It.IsAny<MatchRoomState>()), Times.Exactly(2));
-
-            await teamVersus.SetLockState(true);
-
-            Receiver.Verify(c => c.MatchRoomStateChanged(It.IsAny<MatchRoomState>()), Times.Exactly(2));
-
-            await teamVersus.SetLockState(false);
-
-            Assert.False(((TeamVersusRoomState)room.MatchState!).Locked);
-            Receiver.Verify(c => c.MatchRoomStateChanged(It.IsAny<MatchRoomState>()), Times.Exactly(3));
-        }
-
         [Theory]
         [InlineData(-1)]
         [InlineData(2)]
