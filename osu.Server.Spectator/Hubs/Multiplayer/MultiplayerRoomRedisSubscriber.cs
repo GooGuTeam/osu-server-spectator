@@ -96,8 +96,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         break;
 
                     case "SetLockState":
-                        if (envelope.RoomState != null)
-                            await applySetLockState(roomId, envelope.RoomState.Locked);
+                        if (envelope.RoomState != null && envelope.ByUserId != null)
+                            await applySetLockState(roomId, envelope.ByUserId.Value, envelope.RoomState.Locked);
                         break;
 
                     case "ChangeTeam":
@@ -239,14 +239,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await room.SetHost(userId);
         }
 
-        private async Task applySetLockState(long roomId, bool locked)
+        private async Task applySetLockState(long roomId, int byUserId, bool locked)
         {
             var room = await ensureStandardRoom(roomId);
 
-            if (room.MatchController is not TeamVersusMatchController teamVersus)
-                throw new InvalidStateException("Locking / Unlocking is only supported in Team VS mode.");
+            var user = room.Users.FirstOrDefault(u => u.UserID == byUserId);
+            if (user == null)
+                throw new InvalidStateException("Cannot find the specified user.");
 
-            await teamVersus.SetLockState(locked);
+            await room.HandleUserRequest(user, new SetLockStateRequest
+            {
+                Locked = locked,
+            });
         }
 
         private async Task applyChangeUserTeam(long roomId, int userId, int teamId)
