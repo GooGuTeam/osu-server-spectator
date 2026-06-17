@@ -175,6 +175,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                 string callbackMessage = JsonConvert.SerializeObject(new
                 {
+                    id,
                     type = "TaskResult",
                     success = true,
                     details,
@@ -198,9 +199,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                 string callbackMessage = JsonConvert.SerializeObject(new
                 {
+                    id,
                     type = "TaskResult",
                     success = false,
                     message = exceptionMessage,
+                    details = new
+                    {
+                    },
                 });
 
                 await redis.GetSubscriber().PublishAsync(
@@ -213,6 +218,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
+        /// <summary>
+        /// Finds a standard multiplay room (i.e. a room with <see cref="StandardMatchController"/>) by ID.
+        /// </summary>
+        /// <returns>The <see cref="ServerMultiplayerRoom"/> room instance.</returns>
+        /// <exception cref="InvalidStateException">Thrown when the room cannot be found, or it's not a standard multiplayer room.</exception>
         private async Task<ServerMultiplayerRoom> ensureStandardRoom(long roomId)
         {
             using ItemUsage<ServerMultiplayerRoom>? roomUsage = await roomController.TryGetRoom(roomId);
