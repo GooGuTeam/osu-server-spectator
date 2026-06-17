@@ -14,6 +14,7 @@ using osu.Server.Spectator.Hubs.Referee;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.Countdown;
 using StackExchange.Redis;
+using MatchType = osu.Game.Online.Rooms.MatchType;
 
 namespace osu.Server.Spectator.Hubs.Multiplayer
 {
@@ -100,9 +101,19 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             await applySetLockState(roomId, envelope.ByUserId.Value, envelope.RoomState.Locked);
                         break;
 
+                    case "SetUserSlot":
+                        if (envelope.ByUserId != null && envelope.UserState?.SlotId != null)
+                            await applySetUserSlot(roomId, envelope.ByUserId.Value, envelope.UserState.SlotId.Value);
+                        break;
+
+                    case "ChangeRoomSettings":
+                        if (envelope.RoomSettings != null)
+                            await applyChangeRoomSettings(roomId, envelope.RoomSettings);
+                        break;
+
                     case "ChangeTeam":
-                        if (envelope.TargetUserId != null && envelope.UserState != null)
-                            await applyChangeUserTeam(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId);
+                        if (envelope.TargetUserId != null && envelope.UserState?.TeamId != null)
+                            await applyChangeUserTeam(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId.Value);
                         break;
 
                     case "KickPlayer":
@@ -154,7 +165,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         break;
 
                     case "InviteUser":
-                        throw new NotImplementedException();
+                        if (envelope.TargetUserId != null && envelope.ByUserId != null)
+                            await applyInviteUser(roomId, envelope.TargetUserId.Value, envelope.ByUserId.Value);
+                        break;
 
                     default:
                         return;
@@ -206,7 +219,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             return ensureStandardRoomUsage(roomUsage).Item ?? throw new InvalidStateException("Cannot find the room specified.");
         }
 
-        // Warning: This method doesn't guarantee the item is non-null.
         private static ItemUsage<ServerMultiplayerRoom> ensureStandardRoomUsage(ItemUsage<ServerMultiplayerRoom>? roomUsage)
         {
             if (roomUsage?.Item == null)
@@ -251,6 +263,45 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             {
                 Locked = locked,
             });
+        }
+
+        private async Task applySetUserSlot(long roomId, int byUserId, byte slotId)
+        {
+            var room = await ensureStandardRoom(roomId);
+
+            var user = room.Users.FirstOrDefault(u => u.UserID == byUserId);
+            if (user == null)
+                throw new InvalidStateException("Cannot find the specified user.");
+
+            await room.HandleUserRequest(user, new ChangeSlotRequest
+            {
+                SlotID = slotId,
+            });
+        }
+
+        private async Task applyChangeRoomSettings(long roomId, MultiplayerRoomSettingsEnvelope settings)
+        {
+            var room = await ensureStandardRoom(roomId);
+
+            var oldSettings = room.Settings;
+
+            byte? maxParticipants = oldSettings.MaxParticipants;
+            if (settings.MaxParticipants.HasValue)
+                maxParticipants = settings.MaxParticipants.Value == 0 ? null : settings.MaxParticipants.Value;
+
+            var newSettings = new MultiplayerRoomSettings
+            {
+                Name = settings.Name ?? oldSettings.Name,
+                PlaylistItemId = oldSettings.PlaylistItemId,
+                Password = settings.Password ?? oldSettings.Password,
+                MatchType = settings.MatchType != null ? (MatchType)settings.MatchType.Value : oldSettings.MatchType,
+                QueueMode = oldSettings.QueueMode,
+                AutoStartDuration = oldSettings.AutoStartDuration,
+                AutoSkip = oldSettings.AutoSkip,
+                MaxParticipants = maxParticipants,
+            };
+
+            await room.ChangeRoomSettings(newSettings);
         }
 
         private async Task applyChangeUserTeam(long roomId, int userId, int teamId)
@@ -420,6 +471,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await room.Disband(userId);
         }
 
+        private async Task applyInviteUser(long roomId, int invitedUserId, int invitedBy)
+        {
+            var room = await ensureStandardRoom(roomId);
+            await room.InvitePlayer(invitedUserId, invitedBy);
+        }
+
         private static bool tryParseRoomId(RedisChannel channel, out long roomId)
         {
             roomId = 0;
@@ -451,6 +508,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             [JsonProperty("room_state")]
             public MultiplayerRoomStateEnvelope? RoomState { get; set; }
 
+            [JsonProperty("room_settings")]
+            public MultiplayerRoomSettingsEnvelope? RoomSettings { get; set; }
+
             [JsonProperty("user_state")]
             public MultiplayerUserStateEnvelope? UserState { get; set; }
         }
@@ -470,7 +530,25 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private sealed class MultiplayerUserStateEnvelope
         {
             [JsonProperty("team_id")]
-            public int TeamId { get; set; }
+            public int? TeamId { get; set; }
+
+            [JsonProperty("slot_id")]
+            public byte? SlotId { get; set; }
+        }
+
+        private sealed class MultiplayerRoomSettingsEnvelope
+        {
+            [JsonProperty("name")]
+            public string? Name { get; set; }
+
+            [JsonProperty("password")]
+            public string? Password { get; set; }
+
+            [JsonProperty("type")]
+            public int? MatchType { get; set; }
+
+            [JsonProperty("max_participants")]
+            public byte? MaxParticipants { get; set; }
         }
     }
 }
