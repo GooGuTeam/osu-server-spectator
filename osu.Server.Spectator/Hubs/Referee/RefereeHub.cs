@@ -516,7 +516,7 @@ namespace osu.Server.Spectator.Hubs.Referee
                         Freestyle = request.Freestyle,
                     };
 
-                    ensurePlaylistItemValid(newPlaylistItem, beatmap, rulesetManager);
+                    EnsurePlaylistItemValid(newPlaylistItem, beatmap, rulesetManager);
 
                     await roomUsage.Item.AddPlaylistItem(Context.GetUserId(), newPlaylistItem);
                 }
@@ -623,11 +623,11 @@ namespace osu.Server.Spectator.Hubs.Referee
                 Freestyle = request.Freestyle ?? oldPlaylistItem.Freestyle,
             };
 
-            ensurePlaylistItemValid(newPlaylistItem, newBeatmap, rulesetManager);
+            EnsurePlaylistItemValid(newPlaylistItem, newBeatmap, rulesetManager);
             return newPlaylistItem;
         }
 
-        private static void ensurePlaylistItemValid(MultiplayerPlaylistItem playlistItem, database_beatmap beatmap, RulesetManager rulesetMgr)
+        public static void EnsurePlaylistItemValid(MultiplayerPlaylistItem playlistItem, database_beatmap beatmap, RulesetManager rulesetMgr)
         {
             if (playlistItem.RulesetID < 0 || playlistItem.RulesetID > ILegacyRuleset.MAX_LEGACY_RULESET_ID)
                 ThrowHelper.ThrowInvalidRuleset();
