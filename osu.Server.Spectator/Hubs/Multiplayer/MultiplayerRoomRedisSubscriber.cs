@@ -13,6 +13,10 @@ using osu.Server.Spectator.Hubs.Multiplayer.Standard;
 using osu.Server.Spectator.Hubs.Referee;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.Countdown;
+using osu.Game.Online.Rooms;
+using osu.Server.Spectator.Database;
+using osu.Server.Spectator.Database.Models;
+using osu.Server.Spectator.Services;
 using StackExchange.Redis;
 using MatchType = osu.Game.Online.Rooms.MatchType;
 
@@ -26,8 +30,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private const string room_channel_prefix = "osu-channel:room:";
         private const string callback_channel_prefix = "osu-channel:callback:";
 
+        private readonly IDatabaseFactory databaseFactory;
         private readonly IConnectionMultiplexer redis;
         private readonly IMultiplayerRoomController roomController;
+        private readonly RulesetManager rulesetMgr;
         private readonly EntityStore<MultiplayerClientState> players;
         private readonly EntityStore<RefereeClientState> referees;
         private readonly ILogger<MultiplayerRoomRedisSubscriber> logger;
@@ -35,14 +41,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private ISubscriber? subscriber;
 
         public MultiplayerRoomRedisSubscriber(
+            IDatabaseFactory databaseFactory,
             IConnectionMultiplexer redis,
             IMultiplayerRoomController roomController,
+            RulesetManager rulesetMgr,
             EntityStore<MultiplayerClientState> players,
             EntityStore<RefereeClientState> referees,
             ILoggerFactory loggerFactory)
         {
+            this.databaseFactory = databaseFactory;
             this.redis = redis;
             this.roomController = roomController;
+            this.rulesetMgr = rulesetMgr;
             this.players = players;
             this.referees = referees;
             logger = loggerFactory.CreateLogger<MultiplayerRoomRedisSubscriber>();
@@ -176,6 +186,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     case "InviteUser":
                         if (envelope.TargetUserID != null)
                             await room.InvitePlayer(envelope.TargetUserID.Value, envelope.ByUserId);
+                        break;
+
+                    case "ChangeBeatmap":
+                        if (envelope.MapSettings != null)
+                            await applyChangeBeatmap(room, envelope.ByUserId, envelope.MapSettings);
                         break;
 
                     default:
@@ -453,16 +468,48 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
-        private async Task applyDisbandRoom(long roomId, int userId)
+        private async Task applyChangeBeatmap(ServerMultiplayerRoom room, int byUserId, MultiplayerMapSettingsEnvelope settings)
         {
-            var room = await ensureStandardRoom(roomId);
-            await room.Disband(userId);
-        }
+            if (settings.BeatmapID == null)
+                throw new InvalidStateException("Beatmap ID is required.");
 
-        private async Task applyInviteUser(long roomId, int invitedUserId, int invitedBy)
-        {
-            var room = await ensureStandardRoom(roomId);
-            await room.InvitePlayer(invitedUserId, invitedBy);
+            database_beatmap? beatmap;
+
+            using (var db = databaseFactory.GetInstance())
+                beatmap = await db.GetBeatmapAsync(settings.BeatmapID.Value);
+
+            if (beatmap == null)
+                throw new InvalidStateException("Cannot find the beatmap specified.");
+
+            int rulesetId = settings.RulesetID ?? beatmap.playmode;
+
+            var item = new MultiplayerPlaylistItem
+            {
+                OwnerID = byUserId,
+                BeatmapID = beatmap.beatmap_id,
+                BeatmapChecksum = beatmap.checksum ?? string.Empty,
+                RulesetID = rulesetId,
+                RequiredMods = [],
+                AllowedMods = [],
+                StarRating = beatmap.difficulty_rating,
+                Freestyle = false,
+            };
+
+            RefereeHub.EnsurePlaylistItemValid(item, beatmap, rulesetMgr);
+
+            var currentItem = room.CurrentPlaylistItem;
+
+            if (!currentItem.Expired)
+            {
+                // Edit the current item in-place to avoid disrupting the playlist structure.
+                item.ID = currentItem.ID;
+                await room.EditPlaylistItem(byUserId, item);
+            }
+            else
+            {
+                // No valid current item exists; add a fresh one.
+                await room.AddPlaylistItem(byUserId, item);
+            }
         }
 
         private static bool tryParseRoomId(RedisChannel channel, out long roomId)
@@ -501,6 +548,9 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             [JsonProperty("user_state")]
             public MultiplayerUserStateEnvelope? UserState { get; set; }
+
+            [JsonProperty("map_settings")]
+            public MultiplayerMapSettingsEnvelope? MapSettings { get; set; }
         }
 
         private sealed class MultiplayerCountdownEnvelope
@@ -537,6 +587,18 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             [JsonProperty("max_participants")]
             public byte? MaxParticipants { get; set; }
+        }
+
+        private sealed class MultiplayerMapSettingsEnvelope
+        {
+            [JsonProperty("beatmap_id")]
+            public int? BeatmapID { get; set; }
+
+            [JsonProperty("ruleset_id")]
+            public int? RulesetID { get; set; }
+
+            [JsonProperty("mods")]
+            public string[]? ModAcronyms { get; set; }
         }
 
         private sealed class MultiplayerCallbackMessage
