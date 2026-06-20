@@ -76,146 +76,135 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             if (message.IsNullOrEmpty)
                 return;
 
-            string? id = null;
-            object details = new
+            var envelope = JsonConvert.DeserializeObject<MultiplayerRoomEventEnvelope>(message!);
+            if (envelope == null || string.IsNullOrWhiteSpace(envelope.Type))
+                return;
+
+            var callbackMessage = new MultiplayerCallbackMessage
             {
+                ID = envelope.ID,
+                Type = "TaskResult",
+                Details = new
+                {
+                },
             };
 
             try
             {
-                var envelope = JsonConvert.DeserializeObject<MultiplayerRoomEventEnvelope>(message!);
-                if (envelope == null || string.IsNullOrWhiteSpace(envelope.Type))
-                    return;
+                var room = await ensureStandardRoom(roomId);
 
-                id = envelope.Id;
+                ensurePrivileged(room, envelope.ByUserId, envelope.Type != "AddReferee" && envelope.Type != "RemoveReferee");
 
                 switch (envelope.Type)
                 {
                     case "TransferHost":
-                        if (envelope.TargetUserId != null)
-                            await applyTransferHost(roomId, envelope.TargetUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await applyTransferHost(room, envelope.TargetUserID.Value);
                         break;
 
                     case "SetLockState":
-                        if (envelope.RoomState != null && envelope.ByUserId != null)
-                            await applySetLockState(roomId, envelope.ByUserId.Value, envelope.RoomState.Locked);
+                        if (envelope.RoomState != null)
+                            await applySetLockState(room, envelope.ByUserId, envelope.RoomState.Locked);
                         break;
 
                     case "SetUserSlot":
-                        if (envelope.ByUserId != null && envelope.UserState?.SlotId != null)
-                            await applySetUserSlot(roomId, envelope.ByUserId.Value, envelope.UserState.SlotId.Value);
+                        if (envelope.UserState?.SlotID != null)
+                            await applySetUserSlot(room, envelope.ByUserId, envelope.UserState.SlotID.Value);
                         break;
 
                     case "ChangeRoomSettings":
                         if (envelope.RoomSettings != null)
-                            await applyChangeRoomSettings(roomId, envelope.RoomSettings);
+                            await applyChangeRoomSettings(room, envelope.RoomSettings);
                         break;
 
                     case "ChangeTeam":
-                        if (envelope.TargetUserId != null && envelope.UserState?.TeamId != null)
-                            await applyChangeUserTeam(roomId, envelope.TargetUserId.Value, envelope.UserState.TeamId.Value);
+                        if (envelope.TargetUserID != null && envelope.UserState?.TeamID != null)
+                            await applyChangeUserTeam(room, envelope.TargetUserID.Value, envelope.UserState.TeamID.Value);
                         break;
 
                     case "KickPlayer":
-                        if (envelope.TargetUserId != null)
-                            await applyKickUser(roomId, envelope.TargetUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await applyKickUser(roomId, envelope.TargetUserID.Value);
                         break;
 
                     case "BanUser":
-                        if (envelope.TargetUserId != null)
-                            await applyBanUser(roomId, envelope.TargetUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await applyBanUser(roomId, envelope.TargetUserID.Value);
                         break;
 
                     case "AddReferee":
-                        if (envelope.TargetUserId != null)
-                            await applyAddReferee(roomId, envelope.TargetUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await applyAddReferee(roomId, envelope.TargetUserID.Value);
                         break;
 
                     case "RemoveReferee":
-                        if (envelope.TargetUserId != null)
-                            await applyRemoveReferee(roomId, envelope.TargetUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await applyRemoveReferee(roomId, envelope.TargetUserID.Value);
                         break;
 
                     case "ListReferees":
-                        details = new
+                        callbackMessage.Details = new
                         {
-                            referee_ids = await getRefereeIds(roomId),
+                            referee_ids = referees.GetAllEntities()
+                                                  .Select(kv => kv.Value)
+                                                  .Where(rs => rs.IsAssociatedWithRoom(roomId))
+                                                  .Select(rs => rs.UserId)
+                                                  .ToArray(),
                         };
                         break;
 
                     case "StartMatch":
-                        await applyStartMatch(roomId, envelope);
+                        await applyStartMatch(room, envelope);
                         break;
 
                     case "StartReminderTimer":
-                        await applyStartReminderTimer(roomId, envelope);
+                        await applyStartReminderTimer(room, envelope);
                         break;
 
                     case "StopAllCountdowns":
-                        await applyStopAllCountdowns(roomId);
+                        await applyStopAllCountdowns(room);
                         break;
 
                     case "AbortMatch":
-                        await applyAbortMatch(roomId);
+                        await applyAbortMatch(room);
                         break;
 
                     case "CloseRoom":
-                        if (envelope.ByUserId != null)
-                            await applyDisbandRoom(roomId, envelope.ByUserId.Value);
+                        await room.Disband(envelope.ByUserId);
                         break;
 
                     case "InviteUser":
-                        if (envelope.TargetUserId != null && envelope.ByUserId != null)
-                            await applyInviteUser(roomId, envelope.TargetUserId.Value, envelope.ByUserId.Value);
+                        if (envelope.TargetUserID != null)
+                            await room.InvitePlayer(envelope.TargetUserID.Value, envelope.ByUserId);
                         break;
 
                     default:
-                        return;
+                        throw new InvalidStateException("Unsupported message.");
                 }
 
-                string callbackMessage = JsonConvert.SerializeObject(new
-                {
-                    id,
-                    type = "TaskResult",
-                    success = true,
-                    details,
-                });
-
-                await redis.GetSubscriber().PublishAsync(
-                    new RedisChannel($"{callback_channel_prefix}{id}", RedisChannel.PatternMode.Literal),
-                    callbackMessage);
+                callbackMessage.Success = true;
             }
             // Try our best effort to give the feedback to backend
-            catch (Exception ex) when (ex is InvalidStateException or NotHostException)
+            catch (Exception ex) when (ex is InvalidStateException or NotHostException or RefereeHubException)
             {
-                // Would this really happen?
-                if (id == null)
+                callbackMessage.Success = false;
+                callbackMessage.Message = ex switch
                 {
-                    logger.LogWarning(ex, "A task (from {Channel}) without an ID returned with exception.", channel);
-                    return;
-                }
+                    NotHostException => "You don't have the required privilege to perform this action.",
 
-                string exceptionMessage = ex is NotHostException ? "You don't have the required privilege to perform this action." : ex.Message;
-
-                string callbackMessage = JsonConvert.SerializeObject(new
-                {
-                    id,
-                    type = "TaskResult",
-                    success = false,
-                    message = exceptionMessage,
-                    details = new
-                    {
-                    },
-                });
-
-                await redis.GetSubscriber().PublishAsync(
-                    new RedisChannel($"{callback_channel_prefix}{id}", RedisChannel.PatternMode.Literal),
-                    callbackMessage);
+                    // "Error {code}: {message}"
+                    RefereeHubException => ex.Message.Split(':', 2)[1].Trim(),
+                    _ => ex.Message,
+                };
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Failed to process multiplayer room event from {Channel}", channel);
             }
+
+            await redis.GetSubscriber().PublishAsync(
+                new RedisChannel($"{callback_channel_prefix}{callbackMessage.ID}", RedisChannel.PatternMode.Literal),
+                JsonConvert.SerializeObject(callbackMessage));
         }
 
         /// <summary>
@@ -240,31 +229,37 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             return roomUsage;
         }
 
-        private async Task<int[]> getRefereeIds(long roomId)
+        /// <summary>
+        /// Finds a user in a multiplayer room by ID.
+        /// </summary>
+        /// <returns>The <see cref="MultiplayerRoomUser"/> user instance.</returns>
+        /// <exception cref="InvalidStateException">Thrown when the specified user is not in the room.</exception>
+        private static MultiplayerRoomUser ensureUser(ServerMultiplayerRoom room, int userId)
         {
-            await ensureStandardRoom(roomId);
-
-            return referees.GetAllEntities()
-                           .Select(kv => kv.Value)
-                           .Where(rs => rs.IsAssociatedWithRoom(roomId))
-                           .Select(rs => rs.UserId)
-                           .ToArray();
+            var user = room.Users.FirstOrDefault(u => u.UserID == userId);
+            return user ?? throw new InvalidStateException("Cannot find the specified user.");
         }
 
-        private async Task applyTransferHost(long roomId, int userId)
+        private static MultiplayerRoomUser ensurePrivileged(ServerMultiplayerRoom room, int userId, bool allowReferee = true)
         {
-            var room = await ensureStandardRoom(roomId);
+            var user = ensureUser(room, userId);
 
+            if (!allowReferee && room.Host?.UserID != userId || user.Role != MultiplayerRoomUserRole.Referee)
+                throw new NotHostException();
+
+            return user;
+        }
+
+        private async Task applyTransferHost(ServerMultiplayerRoom room, int userId)
+        {
             if (room.Host?.UserID == userId)
                 throw new InvalidStateException("The specified user is already the host.");
 
             await room.SetHost(userId);
         }
 
-        private async Task applySetLockState(long roomId, int byUserId, bool locked)
+        private async Task applySetLockState(ServerMultiplayerRoom room, int byUserId, bool locked)
         {
-            var room = await ensureStandardRoom(roomId);
-
             var user = room.Users.FirstOrDefault(u => u.UserID == byUserId);
             if (user == null)
                 throw new InvalidStateException("Cannot find the specified user.");
@@ -275,10 +270,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             });
         }
 
-        private async Task applySetUserSlot(long roomId, int byUserId, byte slotId)
+        private async Task applySetUserSlot(ServerMultiplayerRoom room, int byUserId, byte slotId)
         {
-            var room = await ensureStandardRoom(roomId);
-
             var user = room.Users.FirstOrDefault(u => u.UserID == byUserId);
             if (user == null)
                 throw new InvalidStateException("Cannot find the specified user.");
@@ -289,10 +282,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             });
         }
 
-        private async Task applyChangeRoomSettings(long roomId, MultiplayerRoomSettingsEnvelope settings)
+        private async Task applyChangeRoomSettings(ServerMultiplayerRoom room, MultiplayerRoomSettingsEnvelope settings)
         {
-            var room = await ensureStandardRoom(roomId);
-
             var oldSettings = room.Settings;
 
             byte? maxParticipants = oldSettings.MaxParticipants;
@@ -314,10 +305,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await room.ChangeRoomSettings(newSettings);
         }
 
-        private async Task applyChangeUserTeam(long roomId, int userId, int teamId)
+        private async Task applyChangeUserTeam(ServerMultiplayerRoom room, int userId, int teamId)
         {
-            var room = await ensureStandardRoom(roomId);
-
             if (room.MatchController is not TeamVersusMatchController teamVersus)
                 throw new InvalidStateException("Team changing is only supported in Team VS mode.");
 
@@ -369,8 +358,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyAddReferee(long roomId, int userId)
         {
-            await ensureStandardRoom(roomId);
-
             // Get or create referee state and associate with room
             using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
 
@@ -380,17 +367,13 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyRemoveReferee(long roomId, int userId)
         {
-            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
-
             // Disassociate referee from room
             using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
             refereeUsage.Item?.DisassociateFromRoom(roomId);
         }
 
-        private async Task applyStartMatch(long roomId, MultiplayerRoomEventEnvelope envelope)
+        private async Task applyStartMatch(ServerMultiplayerRoom room, MultiplayerRoomEventEnvelope envelope)
         {
-            var room = await ensureStandardRoom(roomId);
-
             // Stop any active reminder timer (mutual exclusion: match countdown takes priority)
             var reminderCountdown = room.FindCountdownOfType<ReminderCountdown>();
             if (reminderCountdown != null)
@@ -408,10 +391,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
-        private async Task applyStartReminderTimer(long roomId, MultiplayerRoomEventEnvelope envelope)
+        private async Task applyStartReminderTimer(ServerMultiplayerRoom room, MultiplayerRoomEventEnvelope envelope)
         {
-            var room = await ensureStandardRoom(roomId);
-
             // Create and start a ReminderCountdown (reminder-only, does not start match)
             int seconds = envelope.Countdown?.Seconds ?? 30;
             var reminderCountdown = new ReminderCountdown
@@ -422,9 +403,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await room.StartCountdown(reminderCountdown, onComplete: null);
         }
 
-        private async Task applyStopAllCountdowns(long roomId)
+        private async Task applyStopAllCountdowns(ServerMultiplayerRoom room)
         {
-            var room = await ensureStandardRoom(roomId);
             bool result = false;
 
             // Stop MatchStartCountdown if exists
@@ -454,10 +434,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             }
         }
 
-        private async Task applyAbortMatch(long roomId)
+        private async Task applyAbortMatch(ServerMultiplayerRoom room)
         {
-            var room = await ensureStandardRoom(roomId);
-
             try
             {
                 // If the match is running, abort it
@@ -500,17 +478,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private sealed class MultiplayerRoomEventEnvelope
         {
-            [JsonProperty("id")]
-            public string? Id { get; set; }
+            [JsonProperty("id", Required = Required.Always)]
+            public required string ID { get; set; }
 
-            [JsonProperty("type")]
-            public string? Type { get; set; }
+            [JsonProperty("type", Required = Required.Always)]
+            public required string Type { get; set; }
 
             [JsonProperty("target")]
-            public int? TargetUserId { get; set; }
+            public int? TargetUserID { get; set; }
 
-            [JsonProperty("by")]
-            public int? ByUserId { get; set; }
+            [JsonProperty("by", Required = Required.Always)]
+            public int ByUserId { get; set; }
 
             [JsonProperty("countdown")]
             public MultiplayerCountdownEnvelope? Countdown { get; set; }
@@ -540,10 +518,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         private sealed class MultiplayerUserStateEnvelope
         {
             [JsonProperty("team_id")]
-            public int? TeamId { get; set; }
+            public int? TeamID { get; set; }
 
             [JsonProperty("slot_id")]
-            public byte? SlotId { get; set; }
+            public byte? SlotID { get; set; }
         }
 
         private sealed class MultiplayerRoomSettingsEnvelope
@@ -559,6 +537,26 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             [JsonProperty("max_participants")]
             public byte? MaxParticipants { get; set; }
+        }
+
+        private sealed class MultiplayerCallbackMessage
+        {
+            [JsonProperty("id", Required = Required.Always)]
+            public required string ID { get; set; }
+
+            [JsonProperty("type", Required = Required.Always)]
+            public required string Type { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("message")]
+            public string? Message { get; set; }
+
+            [JsonProperty("details")]
+            public object Details { get; set; } = new
+            {
+            };
         }
     }
 }
