@@ -62,6 +62,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             subscriber = redis.GetSubscriber();
             subscriber.Subscribe(new RedisChannel($"{room_channel_prefix}*", RedisChannel.PatternMode.Pattern), onMessageReceived);
+            logger.LogInformation("Started listening to backend messages.");
 
             return Task.CompletedTask;
         }
@@ -70,6 +71,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         {
             subscriber?.UnsubscribeAll();
             subscriber = null;
+            logger.LogInformation("Stopped listening to backend messages.");
             return Task.CompletedTask;
         }
 
@@ -80,6 +82,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task processMessage(RedisChannel channel, RedisValue message)
         {
+            logger.LogInformation("Received message {Message}", message);
+
             if (!tryParseRoomId(channel, out long roomId))
                 return;
 
@@ -87,6 +91,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 return;
 
             var envelope = JsonConvert.DeserializeObject<MultiplayerRoomEventEnvelope>(message!);
+            logger.LogInformation("Message: {Message}", JsonConvert.SerializeObject(envelope));
             if (envelope == null || string.IsNullOrWhiteSpace(envelope.Type))
                 return;
 
@@ -202,6 +207,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             // Try our best effort to give the feedback to backend
             catch (Exception ex) when (ex is InvalidStateException or NotHostException or RefereeHubException)
             {
+                logger.LogWarning("Exception caught: [{Type}]{Details}", ex, ex.Message);
                 callbackMessage.Success = false;
                 callbackMessage.Message = ex switch
                 {
@@ -220,6 +226,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await redis.GetSubscriber().PublishAsync(
                 new RedisChannel($"{callback_channel_prefix}{callbackMessage.ID}", RedisChannel.PatternMode.Literal),
                 JsonConvert.SerializeObject(callbackMessage));
+            logger.LogInformation("Callback sent: {Message}", JsonConvert.SerializeObject(callbackMessage));
         }
 
         /// <summary>
@@ -255,14 +262,20 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             return user ?? throw new InvalidStateException("Cannot find the specified user.");
         }
 
-        private static MultiplayerRoomUser ensurePrivileged(ServerMultiplayerRoom room, int userId, bool allowReferee = true)
+        private MultiplayerRoomUser ensurePrivileged(ServerMultiplayerRoom room, int userId, bool allowReferee = true)
         {
             var user = ensureUser(room, userId);
 
-            if (!allowReferee && room.Host?.UserID != userId || user.Role != MultiplayerRoomUserRole.Referee)
-                throw new NotHostException();
+            logger.LogInformation("Checking privilege for user '{User}' (#{ID}) in room '{Room}'", user.User?.Username, userId, room.Settings.Name);
 
-            return user;
+            logger.LogInformation("Room host: '{User}' (#{ID})", room.Host?.User?.Username, room.Host?.UserID);
+
+            logger.LogInformation("Current user role: {Role}", user.Role);
+
+            if (room.Host?.UserID == userId || (allowReferee && user.Role == MultiplayerRoomUserRole.Referee))
+                return user;
+
+            throw new NotHostException();
         }
 
         private async Task applyTransferHost(ServerMultiplayerRoom room, int userId)
@@ -346,22 +359,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             {
                 // Determine if user is a player or referee and get the appropriate state
                 case MultiplayerRoomUserRole.Player:
-                {
-                    using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(userId);
+                    {
+                        using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(userId);
 
-                    if (playerUsage.Item != null)
-                        await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, userId);
-                    break;
-                }
+                        if (playerUsage.Item != null)
+                            await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, userId);
+                        break;
+                    }
 
                 case MultiplayerRoomUserRole.Referee:
-                {
-                    using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+                    {
+                        using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
 
-                    if (refereeUsage.Item != null)
-                        await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
-                    break;
-                }
+                        if (refereeUsage.Item != null)
+                            await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
+                        break;
+                    }
             }
         }
 
