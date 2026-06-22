@@ -139,12 +139,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                     case "KickPlayer":
                         if (envelope.TargetUserID != null)
-                            await applyKickUser(roomId, envelope.TargetUserID.Value);
+                            await applyKickUser(roomId, envelope.ByUserId, envelope.TargetUserID.Value);
                         break;
 
                     case "BanUser":
                         if (envelope.TargetUserID != null)
-                            await applyBanUser(roomId, envelope.TargetUserID.Value);
+                            await applyBanUser(roomId, envelope.ByUserId, envelope.TargetUserID.Value);
                         break;
 
                     case "AddReferee":
@@ -345,11 +345,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             await teamVersus.ChangeUserTeam(user, teamId);
         }
 
-        private async Task applyKickUser(long roomId, int userId)
+        private async Task applyKickUser(long roomId, int byUserId, int kickedUserId)
         {
             using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
 
-            var user = roomUsage.Item?.Users.FirstOrDefault(u => u.UserID == userId);
+            var user = roomUsage.Item?.Users.FirstOrDefault(u => u.UserID == kickedUserId);
             if (user == null)
                 throw new InvalidStateException("User is not in the room.");
 
@@ -359,29 +359,29 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             {
                 // Determine if user is a player or referee and get the appropriate state
                 case MultiplayerRoomUserRole.Player:
-                    {
-                        using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(userId);
+                {
+                    using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(kickedUserId);
 
-                        if (playerUsage.Item != null)
-                            await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, userId);
-                        break;
-                    }
+                    if (playerUsage.Item != null)
+                        await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
+                    break;
+                }
 
                 case MultiplayerRoomUserRole.Referee:
-                    {
-                        using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+                {
+                    using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(kickedUserId);
 
-                        if (refereeUsage.Item != null)
-                            await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, userId);
-                        break;
-                    }
+                    if (refereeUsage?.Item != null)
+                        await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
+                    break;
+                }
             }
         }
 
-        private async Task applyBanUser(long roomId, int bannedUserId)
+        private async Task applyBanUser(long roomId, int byUserId, int bannedUserId)
         {
             using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
-            await roomController.BanUserFromRoom(bannedUserId, roomUsage, bannedUserId);
+            await roomController.BanUserFromRoom(bannedUserId, roomUsage, byUserId);
         }
 
         private async Task applyAddReferee(long roomId, int userId)
