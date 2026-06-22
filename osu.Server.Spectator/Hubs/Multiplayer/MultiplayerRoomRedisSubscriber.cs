@@ -386,8 +386,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyAddReferee(long roomId, int userId)
         {
-            // Get or create referee state and associate with room
-            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
+            // Get or create referee state and associate with room.
+            // createOnMissing is required because the user may not have been tracked in the referee store yet
+            // (e.g. BanchoBot or a user that has never joined as referee).
+            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId, createOnMissing: true);
 
             refereeUsage.Item ??= new RefereeClientState(string.Empty, userId);
             refereeUsage.Item.AssociateWithRoom(roomId);
@@ -395,9 +397,15 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyRemoveReferee(long roomId, int userId)
         {
-            // Disassociate referee from room
-            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId);
-            refereeUsage.Item?.DisassociateFromRoom(roomId);
+            // Disassociate referee from room.
+            // Use TryGetForUse because the referee might not exist in the store
+            // (never added, or already removed).
+            using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(userId);
+
+            if (refereeUsage?.Item == null)
+                throw new InvalidStateException("The specified user is not a referee.");
+
+            refereeUsage.Item.DisassociateFromRoom(roomId);
         }
 
         private async Task applyStartMatch(ServerMultiplayerRoom room, MultiplayerRoomEventEnvelope envelope)
