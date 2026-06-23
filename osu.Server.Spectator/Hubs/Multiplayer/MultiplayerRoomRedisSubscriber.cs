@@ -115,6 +115,10 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                 switch (envelope.Type)
                 {
+                    case "GetSettings":
+                        callbackMessage.Message = getSettings(room);
+                        break;
+
                     case "TransferHost":
                         if (envelope.TargetUserID != null)
                             await applyTransferHost(room, envelope.TargetUserID.Value);
@@ -284,6 +288,59 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 return user;
 
             throw new NotHostException();
+        }
+
+        private string getSettings(ServerMultiplayerRoom room)
+        {
+            List<string> outputs =
+            [
+                $"Room name: {room.Settings.Name}",
+            ];
+
+            var currentItem = room.CurrentPlaylistItem;
+
+            if (!currentItem.Expired)
+            {
+                outputs.Add($"Beatmap: #{currentItem.BeatmapID} {(currentItem.Freestyle ? "(Freestyle on)" : "")}");
+                outputs.Add($"Active mods: {string.Join(", ", currentItem.RequiredMods.Select(m => m.Acronym))}");
+            }
+
+            outputs.Add($"Team mode: {room.Settings.MatchType}, Queue mode: {room.Settings.QueueMode}");
+            outputs.Add($"Max participants: {room.Settings.MaxParticipants}");
+            outputs.Add($"Players: {room.Users.Count}");
+
+            IList<MultiplayerRoomUser> users = room.Users;
+
+            var details = room.MatchController.GetMatchDetails();
+
+            foreach (var user in users)
+            {
+                List<string> userParts = [];
+
+                if (details.slots != null && details.slots.TryGetValue(user.UserID, out byte slotId))
+                    userParts.Add($"Slot {slotId}");
+
+                userParts.Add(user.State.ToString());
+                userParts.Add($"#{user.UserID}");
+                userParts.Add(user.User?.Username ?? "(Unknown)");
+
+                List<string> additionalAttrs = [];
+
+                if (room.Host?.UserID == user.UserID)
+                    additionalAttrs.Add("Host");
+                else if (user.Role == MultiplayerRoomUserRole.Referee)
+                    additionalAttrs.Add("Referee");
+
+                if (details.teams != null && details.teams.TryGetValue(user.UserID, out room_team team))
+                    additionalAttrs.Add($"Team {team}");
+
+                if (additionalAttrs.Count > 0)
+                    userParts.Add($"[{string.Join(" / ", additionalAttrs)}]");
+
+                outputs.Add(string.Join('\t', userParts));
+            }
+
+            return string.Join('\n', outputs);
         }
 
         private async Task applyTransferHost(ServerMultiplayerRoom room, int userId)
@@ -570,7 +627,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             newItem.RequiredMods = mods;
             await room.EditPlaylistItem(byUserId, newItem);
-            return mods.Count == 0 ? "Removed all required mods." : $"Changed mods to {mods.Select(m => m.Acronym)}.";
+            return mods.Count == 0 ? "Removed all required mods." : $"Changed mods to {string.Join(", ", mods.Select(m => m.Acronym))}.";
         }
 
         private static bool tryParseRoomId(RedisChannel channel, out long roomId)
