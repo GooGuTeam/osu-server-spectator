@@ -290,6 +290,12 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             throw new NotHostException();
         }
 
+        private void ensureNotPlaying(ServerMultiplayerRoom room)
+        {
+            if (room.State != MultiplayerRoomState.Open)
+                throw new InvalidStateException("Unable to complete this action with a match in-progress.");
+        }
+
         private async Task<string> getSettings(ServerMultiplayerRoom room)
         {
             List<string> outputs =
@@ -369,6 +375,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applySetUserSlot(ServerMultiplayerRoom room, int byUserId, byte slotId)
         {
+            ensureNotPlaying(room);
+
             var user = room.Users.FirstOrDefault(u => u.UserID == byUserId);
             if (user == null)
                 throw new InvalidStateException("Cannot find the specified user.");
@@ -381,6 +389,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyChangeRoomSettings(ServerMultiplayerRoom room, MultiplayerRoomSettingsEnvelope settings)
         {
+            ensureNotPlaying(room);
+
             var oldSettings = room.Settings;
 
             byte? maxParticipants = oldSettings.MaxParticipants;
@@ -404,6 +414,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyChangeUserTeam(ServerMultiplayerRoom room, int userId, int teamId)
         {
+            ensureNotPlaying(room);
+
             if (room.MatchController is not TeamVersusMatchController teamVersus)
                 throw new InvalidStateException("Team changing is only supported in Team VS mode.");
 
@@ -479,6 +491,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyStartMatch(ServerMultiplayerRoom room, MultiplayerRoomEventEnvelope envelope)
         {
+            ensureNotPlaying(room);
+
             // Stop any active reminder timer (mutual exclusion: match countdown takes priority)
             var reminderCountdown = room.FindCountdownOfType<ReminderCountdown>();
             if (reminderCountdown != null)
@@ -560,6 +574,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task applyChangeBeatmap(ServerMultiplayerRoom room, int byUserId, MultiplayerMapSettingsEnvelope settings)
         {
+            ensureNotPlaying(room);
+
             if (settings.BeatmapID == null)
                 throw new InvalidStateException("Beatmap ID is required.");
 
@@ -604,6 +620,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
         private async Task<string> applyChangeMods(ServerMultiplayerRoom room, int byUserId, MultiplayerMapSettingsEnvelope settings)
         {
+            ensureNotPlaying(room);
+
             if (settings.ModAcronyms == null)
                 throw new InvalidStateException("Mod acronyms are required.");
 
