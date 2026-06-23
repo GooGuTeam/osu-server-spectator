@@ -18,8 +18,8 @@
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
         <PackageReference Include="OpenSkillSharp" Version="1.1.0" />
-        <PackageReference Include="g0v0.osu.Game" Version="2026.611.0" />
-        <PackageReference Include="g0v0.osu.Game.Rulesets.Osu" Version="2026.611.0" />
+        <PackageReference Include="g0v0.osu.Game" Version="2026.621.0" />
+        <PackageReference Include="g0v0.osu.Game.Rulesets.Osu" Version="2026.621.0" />
         <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.605.0" />
         <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.605.0" />
         <PackageReference Include="ppy.osu.Game.Rulesets.Taiko" Version="2026.605.0" />
