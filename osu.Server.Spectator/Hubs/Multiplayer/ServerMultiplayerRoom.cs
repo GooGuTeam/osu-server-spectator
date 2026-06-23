@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.Countdown;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
@@ -1114,6 +1115,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             await eventDispatcher.PostCountdownStartedAsync(RoomID, countdown);
 
+            // Determine the countdown type tag for Redis consumers (e.g. g0v0-server).
+            string countdownTypeTag = countdown switch
+            {
+                MatchStartCountdown => "match_start",
+                ReminderCountdown => "reminder",
+                _ => "other",
+            };
+
             countdownInfo.Task = start();
 
             async Task start()
@@ -1138,7 +1147,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                             int remainingSeconds = (int)Math.Ceiling(remaining.TotalSeconds);
 
                             if (reminderThresholds.Contains(remainingSeconds) && emittedThresholds.Add(remainingSeconds))
-                                await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, remainingSeconds);
+                                await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, countdownTypeTag, remainingSeconds);
 
                             var nextSleep = TimeSpan.FromMilliseconds(Math.Min(remaining.TotalMilliseconds, 250));
                             await Task.Delay(nextSleep, cancellationSource.Token).ConfigureAwait(false);
@@ -1155,7 +1164,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 {
                     var reminderThresholds = buildReminderThresholds((int)Math.Ceiling(countdownInfo.Duration.TotalSeconds));
                     if (reminderThresholds.Contains(0))
-                        await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, 0);
+                        await eventDispatcher.PostCountdownTickAsync(RoomID, countdown.ID, countdownTypeTag, 0);
                 }
 
                 // Notify users that the countdown has finished (or cancelled) and run the continuation.

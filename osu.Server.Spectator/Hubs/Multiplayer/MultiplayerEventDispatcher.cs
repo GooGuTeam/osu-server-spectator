@@ -213,7 +213,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         /// <summary>
         /// A periodic countdown tick reminder.
         /// </summary>
-        public async Task PostCountdownTickAsync(long roomId, int countdownId, double seconds)
+        /// <param name="roomId">The ID of the relevant room.</param>
+        /// <param name="countdownId">The ID of the countdown.</param>
+        /// <param name="countdownType">
+        ///     A string tag describing the countdown type for external consumers (e.g. g0v0-server).
+        ///     Supported values: <c>"match_start"</c>, <c>"reminder"</c>, <c>"other"</c>.
+        /// </param>
+        /// <param name="seconds">Seconds remaining.</param>
+        public async Task PostCountdownTickAsync(long roomId, int countdownId, string countdownType, double seconds)
         {
             // Send to player clients as a MatchServerEvent
             await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.MatchEvent), new osu.Game.Online.Multiplayer.Countdown.CountdownTickEvent(countdownId, seconds));
@@ -236,6 +243,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     type = "CountdownTick",
                     room_id = roomId,
                     countdown_id = countdownId,
+                    countdown_type = countdownType,
                     seconds,
                 });
 
