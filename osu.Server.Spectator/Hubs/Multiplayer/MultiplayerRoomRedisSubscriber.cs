@@ -2,18 +2,21 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using osu.Game.Online.API;
 using osu.Server.Spectator.Entities;
 using osu.Server.Spectator.Hubs.Multiplayer.Standard;
 using osu.Server.Spectator.Hubs.Referee;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.Countdown;
 using osu.Game.Online.Rooms;
+using osu.Game.Rulesets.Mods;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Services;
@@ -196,6 +199,11 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     case "ChangeBeatmap":
                         if (envelope.MapSettings != null)
                             await applyChangeBeatmap(room, envelope.ByUserId, envelope.MapSettings);
+                        break;
+
+                    case "ChangeMods":
+                        if (envelope.MapSettings != null)
+                            callbackMessage.Message = await applyChangeMods(room, envelope.ByUserId, envelope.MapSettings);
                         break;
 
                     default:
@@ -531,6 +539,38 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 // No valid current item exists; add a fresh one.
                 await room.AddPlaylistItem(byUserId, item);
             }
+        }
+
+        private async Task<string> applyChangeMods(ServerMultiplayerRoom room, int byUserId, MultiplayerMapSettingsEnvelope settings)
+        {
+            if (settings.ModAcronyms == null)
+                throw new InvalidStateException("Mod acronyms are required.");
+
+            var currentItem = room.CurrentPlaylistItem;
+
+            if (currentItem.Expired)
+                throw new InvalidStateException("Cannot change mods of an already played playlist item.");
+
+            // Clone the original item in case it's used somewhere else.
+            var newItem = currentItem.Clone();
+
+            var ruleset = rulesetMgr.GetRuleset(currentItem.RulesetID);
+
+            List<APIMod> mods = [];
+
+            foreach (string acronym in settings.ModAcronyms)
+            {
+                var mod = ruleset.CreateModFromAcronym(acronym);
+
+                if (mod is null or UnknownMod)
+                    throw new InvalidStateException($"Unable to find a mod matching the acronym {acronym}.");
+
+                mods.Add(new APIMod(mod));
+            }
+
+            newItem.RequiredMods = mods;
+            await room.EditPlaylistItem(byUserId, newItem);
+            return mods.Count == 0 ? "Removed all required mods." : $"Changed mods to {mods.Select(m => m.Acronym)}.";
         }
 
         private static bool tryParseRoomId(RedisChannel channel, out long roomId)
