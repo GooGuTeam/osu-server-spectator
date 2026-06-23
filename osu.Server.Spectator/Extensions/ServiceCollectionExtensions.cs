@@ -31,6 +31,8 @@ namespace osu.Server.Spectator.Extensions
                                     .AddSingleton<GracefulShutdownManager>()
                                     .AddSingleton<MetadataBroadcaster>()
                                     .AddSingleton<IScoreStorage, ServerScoreStorage>()
+                                    .AddSingleton<EntityStore<ScoreBuffer.BufferedScore>>()
+                                    .AddSingleton<ScoreBuffer>()
                                     .AddSingleton<ScoreUploader>()
                                     .AddSingleton<IScoreProcessedSubscriber, ScoreProcessedSubscriber>()
                                     .AddHostedService<MultiplayerRoomRedisSubscriber>()
