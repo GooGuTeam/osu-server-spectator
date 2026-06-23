@@ -116,7 +116,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                 switch (envelope.Type)
                 {
                     case "GetSettings":
-                        callbackMessage.Message = getSettings(room);
+                        callbackMessage.Message = await getSettings(room);
                         break;
 
                     case "TransferHost":
@@ -290,7 +290,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             throw new NotHostException();
         }
 
-        private string getSettings(ServerMultiplayerRoom room)
+        private async Task<string> getSettings(ServerMultiplayerRoom room)
         {
             List<string> outputs =
             [
@@ -311,18 +311,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
             IList<MultiplayerRoomUser> users = room.Users;
 
+            // The room instance won't give correct usernames, then we need to fetch them from DB.
+            using var db = databaseFactory.GetInstance();
+
             var details = room.MatchController.GetMatchDetails();
 
             foreach (var user in users)
             {
                 List<string> userParts = [];
 
+                var username = await db.GetUsernameAsync(user.UserID);
+
                 if (details.slots != null && details.slots.TryGetValue(user.UserID, out byte slotId))
                     userParts.Add($"Slot {slotId}");
 
                 userParts.Add(user.State.ToString());
-                userParts.Add($"#{user.UserID}");
-                userParts.Add(user.User?.Username ?? "(Unknown)");
+                userParts.Add($"{username ?? "(Unknown)"} (#{user.UserID})");
 
                 List<string> additionalAttrs = [];
 
