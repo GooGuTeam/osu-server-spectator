@@ -440,22 +440,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             {
                 // Determine if user is a player or referee and get the appropriate state
                 case MultiplayerRoomUserRole.Player:
-                    {
-                        using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(kickedUserId);
+                {
+                    using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(kickedUserId);
 
-                        if (playerUsage.Item != null)
-                            await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
-                        break;
-                    }
+                    if (playerUsage.Item != null)
+                        await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
+                    break;
+                }
 
                 case MultiplayerRoomUserRole.Referee:
-                    {
-                        using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(kickedUserId);
+                {
+                    using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(kickedUserId);
 
-                        if (refereeUsage?.Item != null)
-                            await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
-                        break;
-                    }
+                    if (refereeUsage?.Item != null)
+                        await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
+                    break;
+                }
             }
         }
 
@@ -470,10 +470,20 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             // Get or create referee state and associate with room.
             // createOnMissing is required because the user may not have been tracked in the referee store yet
             // (e.g. BanchoBot or a user that has never joined as referee).
-            using ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId, createOnMissing: true);
+            using (ItemUsage<RefereeClientState> refereeUsage = await referees.GetForUse(userId, createOnMissing: true))
+            {
+                refereeUsage.Item ??= new RefereeClientState(string.Empty, userId);
+                refereeUsage.Item.AssociateWithRoom(roomId);
+            }
 
-            refereeUsage.Item ??= new RefereeClientState(string.Empty, userId);
-            refereeUsage.Item.AssociateWithRoom(roomId);
+            // If the user is already present in the room (e.g. joined as a player),
+            // update their role to referee so that all clients reflect the change.
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
+            var room = roomUsage.Item!;
+
+            var user = room.Users.FirstOrDefault(u => u.UserID == userId);
+            if (user != null && user.Role != MultiplayerRoomUserRole.Referee)
+                await room.ChangeUserRole(userId, MultiplayerRoomUserRole.Referee);
         }
 
         private async Task applyRemoveReferee(long roomId, int userId)
@@ -481,12 +491,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             // Disassociate referee from room.
             // Use TryGetForUse because the referee might not exist in the store
             // (never added, or already removed).
-            using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(userId);
+            using (ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(userId))
+            {
+                if (refereeUsage?.Item == null)
+                    throw new InvalidStateException("The specified user is not a referee.");
 
-            if (refereeUsage?.Item == null)
-                throw new InvalidStateException("The specified user is not a referee.");
+                refereeUsage.Item.DisassociateFromRoom(roomId);
+            }
 
-            refereeUsage.Item.DisassociateFromRoom(roomId);
+            // If the user is still present in the room, revert their role to player
+            // so that all clients reflect the change.
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
+            var room = roomUsage.Item!;
+
+            var user = room.Users.FirstOrDefault(u => u.UserID == userId);
+            if (user != null && user.Role != MultiplayerRoomUserRole.Player)
+                await room.ChangeUserRole(userId, MultiplayerRoomUserRole.Player);
         }
 
         private async Task applyStartMatch(ServerMultiplayerRoom room, MultiplayerRoomEventEnvelope envelope)
@@ -598,22 +618,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     switch (roomUser.Role)
                     {
                         case MultiplayerRoomUserRole.Player:
-                            {
-                                using ItemUsage<MultiplayerClientState>? playerUsage = await players.TryGetForUse(roomUser.UserID);
+                        {
+                            using ItemUsage<MultiplayerClientState>? playerUsage = await players.TryGetForUse(roomUser.UserID);
 
-                                if (playerUsage?.Item != null)
-                                    await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
-                                break;
-                            }
+                            if (playerUsage?.Item != null)
+                                await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
+                            break;
+                        }
 
                         case MultiplayerRoomUserRole.Referee:
-                            {
-                                using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(roomUser.UserID);
+                        {
+                            using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(roomUser.UserID);
 
-                                if (refereeUsage?.Item != null)
-                                    await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
-                                break;
-                            }
+                            if (refereeUsage?.Item != null)
+                                await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
+                            break;
+                        }
                     }
                 }
                 // Disband is handled automatically when the last user is evicted; nothing more to do.

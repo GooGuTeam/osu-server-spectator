@@ -163,6 +163,12 @@ namespace osu.Server.Spectator.Tests.Multiplayer
                 await c.VoteToSkipIntroPassed();
         }
 
+        public virtual async Task UserRoleChanged(int userId, MultiplayerRoomUserRole newRole)
+        {
+            foreach (var c in Clients.OfType<IMultiplayerClient>())
+                await c.UserRoleChanged(userId, newRole);
+        }
+
         public virtual async Task MatchmakingQueueJoined()
         {
             foreach (var c in Clients.OfType<IMatchmakingClient>())

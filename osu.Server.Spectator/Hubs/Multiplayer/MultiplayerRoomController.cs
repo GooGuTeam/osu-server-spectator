@@ -243,6 +243,14 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     // Errors are logged internally by SharedInterop.
                 }
 
+                // Notify all clients about the user leaving/being kicked BEFORE any potential room
+                // disband. This ensures the removed user always receives the event, even when they
+                // are the last occupant and the room is about to be disbanded (e.g. CloseRoom).
+                if (wasKick)
+                    await eventDispatcher.PostUserKickedAsync(room.RoomID, user, removingUserId);
+                else
+                    await eventDispatcher.PostUserLeftAsync(room.RoomID, user);
+
                 // special handling if the only participant is the user which is leaving.
                 if (room.Users.Count == 0)
                 {
@@ -272,11 +280,6 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
 
                     await room.SetHost(newHost.UserID);
                 }
-
-                if (wasKick)
-                    await eventDispatcher.PostUserKickedAsync(room.RoomID, user, removingUserId);
-                else
-                    await eventDispatcher.PostUserLeftAsync(room.RoomID, user);
             }
             finally
             {

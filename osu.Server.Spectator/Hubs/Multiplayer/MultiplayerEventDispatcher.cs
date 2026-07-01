@@ -452,6 +452,17 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         }
 
         /// <summary>
+        /// A user's <see cref="MultiplayerRoomUser.Role"/> in a room has changed.
+        /// </summary>
+        /// <param name="roomId">The ID of the relevant room.</param>
+        /// <param name="userId">The ID of the relevant user.</param>
+        /// <param name="newRole">The new role of the user in the room.</param>
+        public async Task PostUserRoleChangedAsync(long roomId, int userId, MultiplayerRoomUserRole newRole)
+        {
+            await multiplayerHubContext.Clients.Group(GetGroupId(roomId)).SendAsync(nameof(IMultiplayerClient.UserRoleChanged), userId, newRole);
+        }
+
+        /// <summary>
         /// A user's <see cref="MultiplayerRoomUser.MatchState"/> in a room has changed.
         /// </summary>
         /// <param name="roomId">The ID of the relevant room.</param>

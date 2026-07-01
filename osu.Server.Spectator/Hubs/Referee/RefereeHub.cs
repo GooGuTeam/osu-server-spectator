@@ -318,6 +318,12 @@ namespace osu.Server.Spectator.Hubs.Referee
                         targetUserUsage.Item.AssociateWithRoom(roomId);
                     }
 
+                    // If the user is already present in the room (e.g. joined as a player),
+                    // update their role to referee so that all clients reflect the change.
+                    var user = roomUsage.Item.Users.FirstOrDefault(u => u.UserID == targetUserId);
+                    if (user != null && user.Role != MultiplayerRoomUserRole.Referee)
+                        await roomUsage.Item.ChangeUserRole(targetUserId, MultiplayerRoomUserRole.Referee);
+
                     await eventDispatcher.PostRefereeAddedAsync(roomId, targetUserId);
                 }
             }
@@ -344,6 +350,13 @@ namespace osu.Server.Spectator.Hubs.Referee
 
                     await tryKickRefereeFromMultiplayerHub(roomUsage, targetUserId, userUsage.Item.UserId);
                     await kickRefereeFromRefereeHub(roomUsage, targetUserId, userUsage.Item.UserId);
+
+                    // If the user is still present in the room (e.g. not joined via multiplayer hub,
+                    // so the kick above was a no-op), revert their role to player so that all
+                    // clients reflect the change.
+                    var user = roomUsage.Item.Users.FirstOrDefault(u => u.UserID == targetUserId);
+                    if (user != null && user.Role != MultiplayerRoomUserRole.Player)
+                        await roomUsage.Item.ChangeUserRole(targetUserId, MultiplayerRoomUserRole.Player);
 
                     await eventDispatcher.PostRefereeRemovedAsync(roomId, targetUserId);
                 }

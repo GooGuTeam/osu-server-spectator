@@ -548,6 +548,29 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
         }
 
         /// <summary>
+        /// Changes the role of a user in this room.
+        /// The role change is communicated to all users in the room.
+        /// </summary>
+        /// <param name="userId">The ID of the user whose role is changing.</param>
+        /// <param name="newRole">The new role to assign to the user.</param>
+        /// <exception cref="InvalidStateException">The user with the supplied <paramref name="userId"/> was not in the room.</exception>
+        public async Task ChangeUserRole(int userId, MultiplayerRoomUserRole newRole)
+        {
+            var user = Users.FirstOrDefault(u => u.UserID == userId);
+
+            if (user == null)
+                throw new InvalidStateException("User is not in the room.");
+
+            if (user.Role == newRole)
+                return;
+
+            Log(user, $"User changing role from {user.Role} to {newRole}");
+
+            user.Role = newRole;
+            await eventDispatcher.PostUserRoleChangedAsync(RoomID, userId, newRole);
+        }
+
+        /// <summary>
         /// Given this room and a state transition, throw if there's an issue with the sequence of events.
         /// </summary>
         /// <param name="userRole">The user's role.</param>

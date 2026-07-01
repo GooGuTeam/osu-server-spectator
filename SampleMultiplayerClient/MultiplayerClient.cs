@@ -51,6 +51,7 @@ namespace SampleMultiplayerClient
             connection.On<MultiplayerPlaylistItem>(nameof(IMultiplayerClient.PlaylistItemChanged), ((IMultiplayerClient)this).PlaylistItemChanged);
             connection.On<long>(nameof(IMultiplayerClient.PlaylistItemRemoved), ((IMultiplayerClient)this).PlaylistItemRemoved);
             connection.On<int, long, string>(nameof(IMultiplayerClient.Invited), ((IMultiplayerClient)this).Invited);
+            connection.On<int, MultiplayerRoomUserRole>(nameof(IMultiplayerClient.UserRoleChanged), ((IMultiplayerClient)this).UserRoleChanged);
             connection.On(nameof(IStatefulUserHubClient.DisconnectRequested), ((IStatefulUserHubClient)this).DisconnectRequested);
 
             connection.On(nameof(IMatchmakingClient.MatchmakingQueueJoined), ((IMatchmakingClient)this).MatchmakingQueueJoined);
@@ -194,6 +195,16 @@ namespace SampleMultiplayerClient
         {
             if (userId == UserID)
                 State = state;
+
+            return Task.CompletedTask;
+        }
+
+        Task IMultiplayerClient.UserRoleChanged(int userId, MultiplayerRoomUserRole newRole)
+        {
+            Debug.Assert(Room != null);
+            var user = Room.Users.SingleOrDefault(u => u.UserID == userId);
+            if (user != null)
+                user.Role = newRole;
 
             return Task.CompletedTask;
         }
