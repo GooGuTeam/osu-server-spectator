@@ -192,7 +192,7 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                         break;
 
                     case "CloseRoom":
-                        await room.Disband(envelope.ByUserId);
+                        await applyCloseRoom(roomId, envelope.ByUserId);
                         break;
 
                     case "InviteUser":
@@ -440,22 +440,22 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
             {
                 // Determine if user is a player or referee and get the appropriate state
                 case MultiplayerRoomUserRole.Player:
-                {
-                    using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(kickedUserId);
+                    {
+                        using ItemUsage<MultiplayerClientState> playerUsage = await players.GetForUse(kickedUserId);
 
-                    if (playerUsage.Item != null)
-                        await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
-                    break;
-                }
+                        if (playerUsage.Item != null)
+                            await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
+                        break;
+                    }
 
                 case MultiplayerRoomUserRole.Referee:
-                {
-                    using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(kickedUserId);
+                    {
+                        using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(kickedUserId);
 
-                    if (refereeUsage?.Item != null)
-                        await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
-                    break;
-                }
+                        if (refereeUsage?.Item != null)
+                            await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
+                        break;
+                    }
             }
         }
 
@@ -569,6 +569,60 @@ namespace osu.Server.Spectator.Hubs.Multiplayer
                     throw new InvalidStateException("There is not a running match or an ongoing match countdown.");
 
                 await room.StopCountdown(countdown.ID);
+            }
+        }
+
+        private async Task applyCloseRoom(long roomId, int byUserId)
+        {
+            using ItemUsage<ServerMultiplayerRoom> roomUsage = ensureStandardRoomUsage(await roomController.TryGetRoom(roomId));
+            var room = roomUsage.Item!;
+
+            ensureNotPlaying(room);
+
+            // Snapshot the user list before any mutations.
+            // room.Users is modified in-place by KickUserFromRoom, so we must take a copy.
+            var usersToEvict = room.Users.ToList();
+
+            if (usersToEvict.Count > 0)
+            {
+                // Kick every member. KickUserFromRoom sends UserKicked to all group members so that
+                // connected osu! clients are notified and leave the room UI.
+                // When the last user is removed, removeUserFromRoom automatically calls room.Disband()
+                // and roomUsage.Destroy(), so we must NOT call Disband() ourselves afterwards.
+                foreach (var roomUser in usersToEvict)
+                {
+                    // Guard against concurrent removals (e.g. disconnect handlers).
+                    if (room.Users.All(u => u.UserID != roomUser.UserID))
+                        continue;
+
+                    switch (roomUser.Role)
+                    {
+                        case MultiplayerRoomUserRole.Player:
+                            {
+                                using ItemUsage<MultiplayerClientState>? playerUsage = await players.TryGetForUse(roomUser.UserID);
+
+                                if (playerUsage?.Item != null)
+                                    await roomController.KickUserFromRoom(playerUsage.Item, roomUsage, byUserId);
+                                break;
+                            }
+
+                        case MultiplayerRoomUserRole.Referee:
+                            {
+                                using ItemUsage<RefereeClientState>? refereeUsage = await referees.TryGetForUse(roomUser.UserID);
+
+                                if (refereeUsage?.Item != null)
+                                    await roomController.KickUserFromRoom(refereeUsage.Item, roomUsage, byUserId);
+                                break;
+                            }
+                    }
+                }
+                // Disband is handled automatically when the last user is evicted; nothing more to do.
+            }
+            else
+            {
+                // Room is already empty — close it explicitly.
+                await room.Disband(byUserId);
+                roomUsage.Destroy();
             }
         }
 
