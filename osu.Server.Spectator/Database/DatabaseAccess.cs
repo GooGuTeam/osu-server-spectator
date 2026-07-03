@@ -387,7 +387,7 @@ namespace osu.Server.Spectator.Database
                 INSERT INTO room_playlists
                     (id, owner_id, room_id, beatmap_id, ruleset_id,
                      allowed_mods, required_mods, freestyle, playlist_order,
-                     expired, played_at)
+                     expired, played_at, win_condition)
                 VALUES
                     (
                         (SELECT COALESCE(MAX(rp.id), -1) + 1
@@ -395,9 +395,21 @@ namespace osu.Server.Spectator.Database
                          WHERE rp.room_id = @room_id),
                         @owner_id, @room_id, @beatmap_id, @ruleset_id,
                         @allowed_mods, @required_mods, @freestyle, @playlist_order,
-                        @expired, @played_at
+                        @expired, @played_at, @win_condition 
                     );",
-          item);
+        new {
+          item.owner_id,
+          item.room_id,
+          item.beatmap_id,
+          item.ruleset_id,
+          item.allowed_mods,
+          item.required_mods,
+          item.freestyle,
+          item.playlist_order,
+          item.expired,
+          item.played_at,
+          win_condition = item.win_condition.ToString()
+        });
 
       return await connection.QuerySingleAsync<long>(@"
                 SELECT id FROM room_playlists WHERE db_id = LAST_INSERT_ID();");
@@ -415,8 +427,19 @@ namespace osu.Server.Spectator.Database
           + " allowed_mods = @allowed_mods,"
           + " freestyle = @freestyle,"
           + " playlist_order = @playlist_order,"
+          + " win_condition = @win_condition,"
           + " updated_at = NOW()"
-          + " WHERE id = @id AND room_id = @room_id", item);
+          + " WHERE id = @id AND room_id = @room_id", new {
+            item.beatmap_id,
+            item.ruleset_id,
+            item.required_mods,
+            item.allowed_mods,
+            item.freestyle,
+            item.playlist_order,
+            win_condition = item.win_condition.ToString(),
+            item.id,
+            item.room_id,
+          });
     }
 
     public async Task RemovePlaylistItemAsync(long roomId, long playlistItemId)
