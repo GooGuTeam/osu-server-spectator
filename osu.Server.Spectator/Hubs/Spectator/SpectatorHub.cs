@@ -162,9 +162,9 @@ namespace osu.Server.Spectator.Hubs.Spectator
                     int exitTime = (int)Math.Round((score.Replay.Frames.LastOrDefault()?.Time ?? 0) / 1000);
 
                     if (state.State == SpectatedUserState.Failed || state.State == SpectatedUserState.Quit)
-                        await processFailtime(usage.Item!, score, exitTime, state);
+                        await processFailtime(usage.Item!, exitTime, state);
 
-                    await editPlayTime(usage.Item!, score, exitTime);
+                    await editPlayTime(score, exitTime);
                 }
                 finally
                 {
@@ -211,9 +211,9 @@ namespace osu.Server.Spectator.Hubs.Spectator
             await scoreProcessedSubscriber.RegisterForSingleScoreAsync(Context.ConnectionId, Context.GetUserId(), scoreToken);
         }
 
-        private async Task processFailtime(SpectatorClientState item, Score score, int exitTime, SpectatorState state)
+        private async Task processFailtime(SpectatorClientState item, int exitTime, SpectatorState state)
         {
-            Debug.Assert(item.Beatmap != null && score != null);
+            Debug.Assert(item.Beatmap != null);
 
             int beatmapId = item.Beatmap.beatmap_id;
             int totalLength = item.Beatmap.total_length;
@@ -258,15 +258,17 @@ namespace osu.Server.Spectator.Hubs.Spectator
             }
         }
 
-        private async Task editPlayTime(SpectatorClientState item, Score score, int exitTime)
+        private async Task editPlayTime(Score score, int exitTime)
         {
-            Debug.Assert(score != null && item.State != null);
-
             if (exitTime <= 0)
                 return;
 
-            int userId = score.ScoreInfo.UserID;
             var ruleset = score.ScoreInfo.Ruleset;
+
+            if (ruleset == null)
+                return;
+
+            int userId = score.ScoreInfo.UserID;
             string gameMode = GameModeHelper.GameModeToStringSpecial(ruleset, score.ScoreInfo.APIMods);
 
             using (var db = databaseFactory.GetInstance())

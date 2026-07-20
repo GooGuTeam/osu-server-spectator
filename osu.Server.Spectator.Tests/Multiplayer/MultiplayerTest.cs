@@ -341,6 +341,9 @@ namespace osu.Server.Spectator.Tests.Multiplayer
       Database.Setup(db => db.GetAllPlaylistItemsAsync(It.IsAny<long>()))
               .Returns<long>(roomId => Task.FromResult(playlistItems.Where(i => i.room_id == roomId).Select(i => i.Clone()).ToArray()));
 
+      Database.Setup(db => db.GetAllScoresForPlaylistItem(It.IsAny<long>(), It.IsAny<long>()))
+              .Returns<long, long>((_, playlistItemId) => Database.Object.GetAllScoresForPlaylistItem(playlistItemId));
+
       Database.Setup(db => db.RemovePlaylistItemAsync(It.IsAny<long>(), It.IsAny<long>()))
               .Callback<long, long>((roomId, playlistItemId) => playlistItems.RemoveAll(i => i.room_id == roomId && i.id == playlistItemId));
     }

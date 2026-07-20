@@ -4,6 +4,7 @@
 using System;
 using Newtonsoft.Json;
 using osu.Game.Online.API;
+using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 
 // ReSharper disable InconsistentNaming (matches database table)
@@ -50,6 +51,11 @@ namespace osu.Server.Spectator.Database.Models
         /// </summary>
         public double difficulty_rating { get; set; }
 
+        /// <summary>
+        /// The win condition
+        /// </summary>
+        public WinCondition win_condition { get; set; }
+
         // for deserialization
         public multiplayer_playlist_item()
         {
@@ -74,6 +80,7 @@ namespace osu.Server.Spectator.Database.Models
             expired = item.Expired;
             playlist_order = item.PlaylistOrder;
             played_at = item.PlayedAt;
+            win_condition = item.WinCondition;
         }
 
         public MultiplayerPlaylistItem ToMultiplayerPlaylistItem()
@@ -91,7 +98,8 @@ namespace osu.Server.Spectator.Database.Models
                 Expired = expired,
                 PlaylistOrder = playlist_order ?? 0,
                 PlayedAt = played_at,
-                StarRating = difficulty_rating
+                StarRating = difficulty_rating,
+                WinCondition = win_condition
             };
             return playlistItem;
         }

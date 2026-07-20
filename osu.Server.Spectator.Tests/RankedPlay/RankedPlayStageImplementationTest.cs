@@ -11,6 +11,7 @@ using osu.Game.Online.RankedPlay;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Hubs.Multiplayer;
+using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Elo;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.Queue;
 using osu.Server.Spectator.Hubs.Multiplayer.Matchmaking.RankedPlay;
 using osu.Server.Spectator.Tests.Multiplayer;
@@ -68,8 +69,9 @@ namespace osu.Server.Spectator.Tests.RankedPlay
         {
             using (var room = await Rooms.GetForUse(ROOM_ID, true))
             {
-                room.Item = await ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object, new matchmaking_pool(),
-                    new[] { USER_ID, USER_ID_2 }.Select(u => new MatchmakingQueueUser(u.ToString()) { UserId = u }).ToArray(),
+                room.Item = await ServerMultiplayerRoom.InitialiseMatchmakingRoomAsync(ROOM_ID, RoomController, DatabaseFactory.Object, EventDispatcher, LoggerFactory.Object,
+                    new matchmaking_pool { type = matchmaking_pool_type.ranked_play },
+                    new[] { USER_ID, USER_ID_2 }.Select(u => new MatchmakingQueueUser(u.ToString()) { UserId = u, Rating = new EloRating(1500) }).ToArray(),
                     new MatchmakingBeatmapSelector(new matchmaking_pool(), Enumerable.Range(1, 50).Select(i => new matchmaking_pool_beatmap
                     {
                         id = (uint)i,
