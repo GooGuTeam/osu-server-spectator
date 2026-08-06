@@ -150,6 +150,12 @@ namespace osu.Server.Spectator.Database
         Task MarkScoreHasReplay(Score score);
 
         /// <summary>
+        /// Returns the ID of the user that owns the provided <paramref name="scoreToken"/>.
+        /// Will be <see langword="null"/> if the provided <paramref name="scoreToken"/> does not exist.
+        /// </summary>
+        Task<int?> GetUserIdFromScoreTokenAsync(long scoreToken);
+
+        /// <summary>
         /// Retrieves the <see cref="SoloScore"/> for a given score token. Will return null while the score has not yet been submitted.
         /// </summary>
         /// <param name="token">The score token.</param>

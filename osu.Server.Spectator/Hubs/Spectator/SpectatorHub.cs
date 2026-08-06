@@ -81,17 +81,25 @@ namespace osu.Server.Spectator.Hubs.Spectator
                     // Should probably be handled in some way.
                 }
 
-                clientState.State = state;
-                clientState.ScoreToken = scoreToken;
-
-                if (state.RulesetID == null)
-                    return;
-
-                if (state.BeatmapID == null)
-                    return;
-
                 using (var db = databaseFactory.GetInstance())
                 {
+                    if (scoreToken != null)
+                    {
+                        int? userIdFromToken = await db.GetUserIdFromScoreTokenAsync(scoreToken.Value);
+
+                        if (userIdFromToken != userId)
+                            throw new InvalidOperationException($"User id:{userId} attempted to start play with token not owned by them (token:{scoreToken} userId:{userIdFromToken})");
+                    }
+
+                    clientState.State = state;
+                    clientState.ScoreToken = scoreToken;
+
+                    if (state.RulesetID == null)
+                        return;
+
+                    if (state.BeatmapID == null)
+                        return;
+
                     database_beatmap? beatmap = await db.GetBeatmapAsync(state.BeatmapID.Value);
                     string? username = await db.GetUsernameAsync(userId);
 
@@ -205,7 +213,16 @@ namespace osu.Server.Spectator.Hubs.Spectator
             int userId = Context.GetUserId();
 
             using (var usage = await GetOrCreateLocalUserState())
+            using (var db = databaseFactory.GetInstance())
             {
+                if (scoreToken != null)
+                {
+                    int? userIdFromToken = await db.GetUserIdFromScoreTokenAsync(scoreToken.Value);
+
+                    if (userIdFromToken != userId)
+                        throw new InvalidOperationException($"User id:{userId} attempted to start play with token not owned by them (token:{scoreToken} userId:{userIdFromToken})");
+                }
+
                 var clientState = (usage.Item ??= new SpectatorClientState(Context.ConnectionId, userId));
 
                 clientState.State = state;
@@ -216,58 +233,55 @@ namespace osu.Server.Spectator.Hubs.Spectator
                 if (state.BeatmapID == null)
                     return;
 
-                using (var db = databaseFactory.GetInstance())
+                database_beatmap? beatmap = await db.GetBeatmapAsync(state.BeatmapID.Value);
+                string? username = await db.GetUsernameAsync(userId);
+
+                if (string.IsNullOrEmpty(username))
+                    throw new ArgumentException(nameof(username));
+
+                if (string.IsNullOrEmpty(beatmap?.checksum))
+                    return;
+
+                clientState.Beatmap = beatmap;
+                var score = new Score
                 {
-                    database_beatmap? beatmap = await db.GetBeatmapAsync(state.BeatmapID.Value);
-                    string? username = await db.GetUsernameAsync(userId);
-
-                    if (string.IsNullOrEmpty(username))
-                        throw new ArgumentException(nameof(username));
-
-                    if (string.IsNullOrEmpty(beatmap?.checksum))
-                        return;
-
-                    clientState.Beatmap = beatmap;
-                    var score = new Score
+                    ScoreInfo =
                     {
-                        ScoreInfo =
+                        APIMods = state.Mods.ToArray(),
+                        User = new APIUser
                         {
-                            APIMods = state.Mods.ToArray(),
-                            User = new APIUser
-                            {
-                                Id = userId,
-                                Username = username,
-                            },
-                            Ruleset = LegacyHelper.GetRulesetFromLegacyID(state.RulesetID.Value).RulesetInfo,
-                            BeatmapInfo = new BeatmapInfo
-                            {
-                                OnlineID = state.BeatmapID.Value,
-                                MD5Hash = beatmap.checksum,
-                                Status = beatmap.approved
-                            },
-                            MaximumStatistics = state.MaximumStatistics
-                        }
-                    };
-
-                    if (scoreToken != null)
-                    {
-                        if (!usage.Item.ScoreTokens.Contains(scoreToken.Value))
+                            Id = userId,
+                            Username = username,
+                        },
+                        Ruleset = LegacyHelper.GetRulesetFromLegacyID(state.RulesetID.Value).RulesetInfo,
+                        BeatmapInfo = new BeatmapInfo
                         {
-                            while (usage.Item.ScoreTokens.Count >= SpectatorClientState.MAX_STARTED_SCORES)
-                            {
-                                long expiredToken = usage.Item.ScoreTokens[0];
-                                usage.Item.ScoreTokens.RemoveAt(0);
-                                var expiredScore = await scoreBuffer.DequeueAsync(expiredToken);
-                                if (expiredScore != null)
-                                    await processScore(expiredToken, expiredScore);
-                                Log($"Score for token {expiredToken} was dropped from buffer due to exceeding limit", LogLevel.Warning);
-                            }
-
-                            usage.Item.ScoreTokens.Add(scoreToken.Value);
-                        }
-
-                        await scoreBuffer.TryAddAsync(scoreToken.Value, score, beatmap);
+                            OnlineID = state.BeatmapID.Value,
+                            MD5Hash = beatmap.checksum,
+                            Status = beatmap.approved
+                        },
+                        MaximumStatistics = state.MaximumStatistics
                     }
+                };
+
+                if (scoreToken != null)
+                {
+                    if (!usage.Item.ScoreTokens.Contains(scoreToken.Value))
+                    {
+                        while (usage.Item.ScoreTokens.Count >= SpectatorClientState.MAX_STARTED_SCORES)
+                        {
+                            long expiredToken = usage.Item.ScoreTokens[0];
+                            usage.Item.ScoreTokens.RemoveAt(0);
+                            var expiredScore = await scoreBuffer.DequeueAsync(expiredToken);
+                            if (expiredScore != null)
+                                await processScore(expiredToken, expiredScore);
+                            Log($"Score for token {expiredToken} was dropped from buffer due to exceeding limit", LogLevel.Warning);
+                        }
+
+                        usage.Item.ScoreTokens.Add(scoreToken.Value);
+                    }
+
+                    await scoreBuffer.TryAddAsync(scoreToken.Value, score, beatmap);
                 }
             }
 

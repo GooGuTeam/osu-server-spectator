@@ -84,6 +84,8 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
+
             await hub.BeginPlaySessionV2(0, new SpectatorState
             {
                 BeatmapID = beatmap_id,
@@ -127,6 +129,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -178,6 +181,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -219,6 +223,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -264,6 +269,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -312,6 +318,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -358,6 +365,7 @@ namespace osu.Server.Spectator.Tests
             mockClients.Setup(clients => clients.Caller).Returns(mockCaller.Object);
             mockClients.Setup(clients => clients.Group(SpectatorHub.GetGroupId(streamer_id))).Returns(mockCaller.Object);
             mockClients.Setup(clients => clients.User(streamer_id.ToString())).Returns(mockStreamer.Object);
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetUsernameAsync(watcher_id)).ReturnsAsync("watcher");
 
             Mock<IGroupManager> mockGroups = new Mock<IGroupManager>();
@@ -415,6 +423,8 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
+
             // Begin play.
             await hub.BeginPlaySessionV2(0, new SpectatorState
             {
@@ -442,6 +452,8 @@ namespace osu.Server.Spectator.Tests
             mockContext.Setup(context => context.UserIdentifier).Returns(streamer_id.ToString());
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
+
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
 
             // Begin play.
             await hub.BeginPlaySessionV2(0, new SpectatorState
@@ -482,6 +494,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -563,6 +576,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -621,6 +635,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -662,6 +677,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -711,6 +727,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -781,6 +798,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).Returns(Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = 456,
@@ -829,6 +847,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(It.IsAny<long>())).Returns<long>(token => Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = (ulong)token,
@@ -943,6 +962,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(It.IsAny<long>())).Returns<long>(token => Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = (ulong)token,
@@ -991,6 +1011,7 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockContext.Object;
             hub.Clients = mockClients.Object;
 
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(It.IsAny<long>())).ReturnsAsync(streamer_id);
             mockDatabase.Setup(db => db.GetScoreFromTokenAsync(It.IsAny<long>())).Returns<long>(token => Task.FromResult<SoloScore?>(new SoloScore
             {
                 id = (ulong)token,
