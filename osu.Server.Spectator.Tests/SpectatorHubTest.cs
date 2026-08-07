@@ -11,13 +11,16 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using osu.Game.Beatmaps;
 using osu.Game.Online.Spectator;
+using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Replays.Legacy;
 using osu.Game.Rulesets.Osu.Mods;
+using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Server.Spectator.Database;
 using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
+using osu.Server.Spectator.Helpers;
 using osu.Server.Spectator.Hubs;
 using osu.Server.Spectator.Hubs.Spectator;
 using osu.Server.Spectator.Services;
@@ -119,6 +122,60 @@ namespace osu.Server.Spectator.Tests
             // check streaming data is propagating to watchers
             await hub.SendFrameDataV2(0, data);
             mockReceiver.Verify(clients => clients.UserSentFrames(streamer_id, data));
+        }
+
+        [Theory]
+        [InlineData(SpectatedUserState.Failed)]
+        [InlineData(SpectatedUserState.Quit)]
+        public async Task EndingPlaySessionUpdatesFailtimeAndPlaytime(SpectatedUserState finalState)
+        {
+            var mockClients = new Mock<IHubCallerClients<ISpectatorClient>>();
+            var mockReceiver = new Mock<ISpectatorClient>();
+            mockClients.Setup(clients => clients.Group(SpectatorHub.GetGroupId(streamer_id))).Returns(mockReceiver.Object);
+
+            var mockContext = new Mock<HubCallerContext>();
+            mockContext.Setup(context => context.UserIdentifier).Returns(streamer_id.ToString());
+            hub.Context = mockContext.Object;
+            hub.Clients = mockClients.Object;
+
+            mockDatabase.Setup(db => db.GetUserIdFromScoreTokenAsync(1234)).ReturnsAsync(streamer_id);
+            mockDatabase.Setup(db => db.GetScoreFromTokenAsync(1234)).ReturnsAsync(new SoloScore { id = 456, passed = false });
+            mockDatabase.Setup(db => db.GetBeatmapOrFetchAsync(beatmap_id)).ReturnsAsync(new database_beatmap
+            {
+                beatmap_id = beatmap_id,
+                approved = BeatmapOnlineStatus.Ranked,
+                checksum = "d2a97fb2fa4529a5e857fe0466dc1daf",
+                total_length = 100
+            });
+            mockDatabase.Setup(db => db.GetBeatmapFailTimeAsync(beatmap_id)).ReturnsAsync((fail_time?)null);
+            mockDatabase.Setup(db => db.GetUserPlaytimeAsync("osu", streamer_id)).ReturnsAsync(100);
+
+            fail_time? updatedFailTime = null;
+            mockDatabase.Setup(db => db.UpdateFailTimeAsync(It.IsAny<fail_time>()))
+                        .Callback<fail_time>(value => updatedFailTime = value)
+                        .Returns(Task.CompletedTask);
+
+            await hub.BeginPlaySessionV2(1234, new SpectatorState
+            {
+                BeatmapID = beatmap_id,
+                RulesetID = 0,
+                State = SpectatedUserState.Playing,
+            });
+
+            await hub.SendFrameDataV2(1234, new FrameDataBundle(
+                new FrameHeader(new ScoreInfo
+                {
+                    User = new APIUser { Id = streamer_id },
+                    Ruleset = new OsuRuleset().RulesetInfo
+                }, new ScoreProcessorStatistics()),
+                [new LegacyReplayFrame(50_000, 0, 0, ReplayButtonState.None)]));
+
+            await hub.EndPlaySessionV2(1234, finalState);
+
+            Assert.NotNull(updatedFailTime);
+            int[] failSections = BlobHelper.ParseBlobToIntArray(finalState == SpectatedUserState.Quit ? updatedFailTime!.exit : updatedFailTime!.fail);
+            Assert.Equal(1, failSections[50]);
+            mockDatabase.Verify(db => db.UpdateUserPlaytimeAsync("osu", streamer_id, 150), Times.Once);
         }
 
         [Theory]

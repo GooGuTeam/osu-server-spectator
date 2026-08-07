@@ -115,5 +115,43 @@ namespace osu.Server.Spectator.Tests.Matchmaking
             Assert.Single(result);
             Assert.Equal(1234, result.Single().beatmap_id);
         }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task DynamicRatingsAreLoadedOnlyWhenEnabled(bool useDmr)
+        {
+            Mock<IDatabaseFactory> dbFactory = new Mock<IDatabaseFactory>();
+            Mock<IDatabaseAccess> dbAccess = new Mock<IDatabaseAccess>();
+
+            dbFactory.Setup(db => db.GetInstance()).Returns(dbAccess.Object);
+            dbAccess.Setup(db => db.GetMatchmakingGlobalPoolBeatmapsAsync(0, 0)).ReturnsAsync(new[]
+            {
+                new database_beatmap
+                {
+                    beatmap_id = 1234,
+                    playmode = 0,
+                    difficulty_rating = 1
+                }
+            });
+            dbAccess.Setup(db => db.GetMatchmakingPoolBeatmapsAsync(10)).ReturnsAsync(new[]
+            {
+                new matchmaking_pool_beatmap
+                {
+                    pool_id = 10,
+                    beatmap_id = 1234,
+                    rating = 1234
+                }
+            });
+
+            MatchmakingBeatmapSelector selector = await MatchmakingBeatmapSelector.Initialise(new matchmaking_pool
+            {
+                id = 10,
+                use_dmr = useDmr
+            }, dbFactory.Object);
+
+            Assert.Equal(useDmr ? 1234 : 887, selector.GetAppropriateBeatmaps(1, []).Single().rating, precision: 0);
+            dbAccess.Verify(db => db.GetMatchmakingPoolBeatmapsAsync(10), useDmr ? Times.Once() : Times.Never());
+        }
     }
 }

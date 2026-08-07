@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
@@ -11,7 +12,9 @@ using Moq;
 using osu.Game.Online.Metadata;
 using osu.Game.Users;
 using osu.Server.Spectator.Database;
+using osu.Server.Spectator.Database.Models;
 using osu.Server.Spectator.Entities;
+using osu.Server.Spectator.Helpers;
 using osu.Server.Spectator.Hubs.Metadata;
 using osu.Server.Spectator.Hubs.Spectator;
 using StackExchange.Redis;
@@ -72,6 +75,24 @@ namespace osu.Server.Spectator.Tests
             hub.Context = mockUserContext.Object;
             hub.Clients = mockClients.Object;
             hub.Groups = mockGroupManager.Object;
+        }
+
+        [Fact]
+        public async Task BeatmapChangesUseDatabaseTimestampsAsQueueIds()
+        {
+            var after = new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero);
+            var firstUpdate = after.AddMinutes(1);
+            var lastUpdate = after.AddMinutes(2);
+
+            mockDatabase.Setup(db => db.GetChangedBeatmapSetsAsync(after)).ReturnsAsync([
+                new beatmap_sync { beatmapset_id = 12, updated_at = firstUpdate },
+                new beatmap_sync { beatmapset_id = 34, updated_at = lastUpdate }
+            ]);
+
+            BeatmapUpdates result = await hub.GetChangesSince(TimeHelper.ToMappedInt(after));
+
+            Assert.Equal([12, 34], result.BeatmapSetIDs);
+            Assert.Equal(TimeHelper.ToMappedInt(lastUpdate), result.LastProcessedQueueID);
         }
 
         [Fact]
