@@ -77,6 +77,11 @@ namespace osu.Server.Spectator
     public static bool MatchmakingQueueAllowBans { get; } = true;
 
     /// <summary>
+    /// Replaces matchmaking pool beatmaps with a debug set.
+    /// </summary>
+    public static bool MatchmakingDebugBeatmaps { get; }
+
+    /// <summary>
     /// The duration for which users are temporarily banned from the matchmaking queue after declining an invitation.
     /// </summary>
     public static TimeSpan MatchmakingQueueBanDuration { get; } = TimeSpan.FromMinutes(1);
@@ -164,6 +169,10 @@ namespace osu.Server.Spectator
       MatchmakingQueueAllowBans = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_QUEUE_ALLOW_BANS"), out bool mmQueueAllowBans)
           ? mmQueueAllowBans
           : MatchmakingQueueAllowBans;
+
+      MatchmakingDebugBeatmaps = bool.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_DEBUG_BEATMAPS"), out bool mmDebugBeatmaps)
+          ? mmDebugBeatmaps
+          : MatchmakingDebugBeatmaps;
 
       MatchmakingQueueBanDuration = int.TryParse(Environment.GetEnvironmentVariable("MATCHMAKING_QUEUE_BAN_DURATION"), out int mmQueueBanDuration)
           ? TimeSpan.FromSeconds(mmQueueBanDuration)

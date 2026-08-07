@@ -6,7 +6,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="AWSSDK.S3" Version="4.0.24.3" />
         <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
         <PackageReference Include="Dapper" Version="2.1.79" />
         <PackageReference Include="MySqlConnector" Version="2.4.0" />
@@ -18,13 +17,13 @@
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
         <PackageReference Include="OpenSkillSharp" Version="1.1.0" />
-        <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.702.1"/>
-        <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.702.1"/>
-        <PackageReference Include="ppy.osu.Game.Rulesets.Taiko" Version="2026.702.1"/>
-        <PackageReference Include="g0v0.osu.Game" Version="2026.705.0"/>
-        <PackageReference Include="g0v0.osu.Game.Rulesets.Osu" Version="2026.705.0"/>
+        <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.730.0"/>
+        <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.730.0"/>
+        <PackageReference Include="ppy.osu.Game.Rulesets.Taiko" Version="2026.730.0"/>
+        <PackageReference Include="g0v0.osu.Game" Version="2026.807.0"/>
+        <PackageReference Include="g0v0.osu.Game.Rulesets.Osu" Version="2026.807.0"/>
         <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
-        <PackageReference Include="ppy.osu.Server.OsuQueueProcessor" Version="2026.317.0" />
+        <PackageReference Include="ppy.osu.Server.OsuQueueProcessor" Version="2026.709.0" />
         <PackageReference Include="Sentry.AspNetCore" Version="6.6.0" />
     </ItemGroup>
 

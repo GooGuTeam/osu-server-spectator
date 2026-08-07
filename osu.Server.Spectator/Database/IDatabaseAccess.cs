@@ -151,6 +151,12 @@ namespace osu.Server.Spectator.Database
     Task<SoloScore?> GetScoreFromTokenAsync(long token);
 
     /// <summary>
+    /// Returns the ID of the user that owns the provided <paramref name="scoreToken"/>.
+    /// Will be <see langword="null"/> if the provided <paramref name="scoreToken"/> does not exist.
+    /// </summary>
+    Task<int?> GetUserIdFromScoreTokenAsync(long scoreToken);
+
+    /// <summary>
     /// Returns the <see cref="SoloScore"/> for the given ID.
     /// </summary>
     Task<SoloScore?> GetScoreAsync(long scoreId);

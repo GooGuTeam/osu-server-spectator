@@ -193,6 +193,8 @@ namespace osu.Server.Spectator.Hubs.Multiplayer.Matchmaking
             switch (request)
             {
                 case MatchmakingAvatarActionRequest avatarAction:
+                    avatarAction.Action.ThrowIfInvalid();
+
                     await eventDispatcher.PostMatchEventAsync(room.RoomID, new MatchmakingAvatarActionEvent
                     {
                         UserId = user.UserID,
