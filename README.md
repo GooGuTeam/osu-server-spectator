@@ -1,3 +1,7 @@
+# DEPERATED
+
+Please consider use [g0v0 v2 Realtime](https://github.com/GooGuTeam/g0v0.Server.Realtime). View [migrating documentaion](https://docs.g0v0.top/lazer/deploy/migrate-from-spectator-server.html) to migrate to V2 Realtime.
+
 # osu-server-spectator [![dev chat](https://discordapp.com/api/guilds/188630481301012481/widget.png?style=shield)](https://discord.gg/ppy)
 
 A server that handles incoming and outgoing spectator data, for active players looking to watch or broadcast to others.
